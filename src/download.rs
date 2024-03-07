@@ -59,7 +59,7 @@ async fn get_folder_and_file_content(folder_key: &str, chunk: u32) -> Result<(Re
         get_content(folder_key, "files", chunk)
     ) {
         Ok((folder_content, file_content)) => Ok((folder_content, file_content)),
-        Err(_) => Err(anyhow!("[ERROR] Invalid Mediafire URL")),
+        Err(_) => Err(anyhow!("Invalid Mediafire URL")),
     }
 }
 
@@ -127,13 +127,23 @@ pub async fn download_file(file: &File, path: PathBuf) -> Result<()> {
             Ok(_) => {
                 println!(
                     "{}",
-                    format!("[INFO] File {:?} downloaded", path.file_name().unwrap()).green()
+                    format!("[INFO] File {} downloaded", get_bold_file_name(&path)).green()
                 );
                 Ok(())
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                println!(
+                    "{}",
+                    format!("[ERROR] Failed to download {}", get_bold_file_name(&path)).red()
+                );
+                Err(e)
+            }
         }
     } else {
-        Err(anyhow!("[ERROR] Invalid download link"))
+        println!(
+            "{}",
+            format!("[ERROR] Failed to download {}", get_bold_file_name(&path)).red()
+        );
+        Err(anyhow!("Invalid download link"))
     }
 }
