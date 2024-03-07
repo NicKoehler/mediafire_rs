@@ -1,0 +1,36 @@
+[package]
+name = "mediafire_rs"
+description = "Downloads files and folders from mediafire"
+authors = ["NicKoehler <grillinicola@proton.me"]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/NicKoehler/mediafire_rs"
+repository = "https://github.com/NicKoehler/mediafire_rs"
+keywords = ["cli", "mediafire", "files", "folders", "download"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "mdrs"
+path = "src/main.rs"
+
+[dependencies]
+hex = "0.4.3"
+ring = "0.17.8"
+regex = "1.10.3"
+anyhow = "1.0.80"
+colored = "2.1.0"
+futures = "0.3.30"
+scraper = "0.19.0"
+async-recursion = "1.0.5"
+clap = { version = "4.5.1", features = ["cargo"] }
+tokio = { version = "1.36.0", features = ["full"] }
+serde = { version = "1.0.197", features = ["serde_derive"] }
+reqwest = { version = "0.11.24", features = ["blocking", "json"] }
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = "z"
+codegen-units = 1
