@@ -11,6 +11,8 @@ use reqwest::get;
 use std::path::PathBuf;
 use tokio::try_join;
 
+const NORMAL_DOWNLOAD_LINK: &str = "https://www.mediafire.com/file/";
+
 #[async_recursion::async_recursion]
 pub async fn download_folder(folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
     create_directory_if_not_exists(&path).await?;
@@ -119,9 +121,16 @@ pub async fn download_file(file: &File, path: PathBuf) -> Result<()> {
         format!("[INFO] Downloading file {}", get_bold_file_name(&path)).blue()
     );
 
-    let body = get(&file.links.normal_download).await?.text().await?;
+    let download_link = {
+        if file.links.normal_download.starts_with(NORMAL_DOWNLOAD_LINK) {
+            let body = get(&file.links.normal_download).await?.text().await?;
+            parse_download_link(&body)
+        } else {
+            Some(file.links.normal_download.clone())
+        }
+    };
 
-    if let Some(link) = parse_download_link(&body) {
+    if let Some(link) = download_link {
         let response = get(link).await?;
         match save_file(&path, response).await {
             Ok(_) => {
