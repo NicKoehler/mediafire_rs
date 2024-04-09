@@ -13,3 +13,5 @@ cargo install mediafire_rs
 ```bash
 mdrs [OPTIONS] <URL>
 ```
+
+For building from source, please refer to the [BUILDING.md](BUILDING.md) file for detailed instructions.
