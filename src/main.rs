@@ -45,7 +45,6 @@ async fn main() -> Result<()> {
             }
         } else {
             create_directory_if_not_exists(&path).await?;
-
             let response = file::get_info(&key).await;
             if let Ok(response) = response {
                 if let Some(file_info) = response.file_info {

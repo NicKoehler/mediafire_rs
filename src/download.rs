@@ -7,11 +7,9 @@ use crate::utils::{create_directory_if_not_exists, parse_download_link, save_fil
 use anyhow::{anyhow, Result};
 use colored::*;
 use futures::future::join_all;
-use reqwest::get;
+use reqwest::{get, Client};
 use std::path::PathBuf;
 use tokio::try_join;
-
-const NORMAL_DOWNLOAD_LINK: &str = "https://www.mediafire.com/file/";
 
 #[async_recursion::async_recursion]
 pub async fn download_folder(folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
@@ -122,9 +120,12 @@ pub async fn download_file(file: &File, path: PathBuf) -> Result<()> {
     );
 
     let download_link = {
-        if file.links.normal_download.starts_with(NORMAL_DOWNLOAD_LINK) {
-            let body = get(&file.links.normal_download).await?.text().await?;
-            parse_download_link(&body)
+        let client = Client::new();
+        let request = client.head(&file.links.normal_download).build()?;
+        let body = client.execute(request).await?;
+
+        if body.headers().get("content-type").unwrap() == &"text/html; charset=UTF-8" {
+            parse_download_link(&get(&file.links.normal_download).await?.text().await?)
         } else {
             Some(file.links.normal_download.clone())
         }

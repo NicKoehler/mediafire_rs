@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
 pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
-    let re = Regex::new(r"mediafire\.com/(file|folder)/(\w+)").unwrap();
+    let re = Regex::new(r"mediafire\.com/(file|file_premium|folder)/(\w+)").unwrap();
     let matches = re.captures(url);
 
     if let Some(captures) = matches {

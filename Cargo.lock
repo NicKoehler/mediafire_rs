@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "mediafire_rs"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-recursion",
