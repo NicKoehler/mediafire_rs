@@ -1,11 +1,15 @@
 use anyhow::Result;
+use futures::StreamExt;
 use regex::Regex;
+use reqwest::header::{HeaderMap, HeaderValue};
 use ring::digest;
 use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
+
+use crate::consts::HEADERS;
 
 pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     let re = Regex::new(r"mediafire\.com/(file|file_premium|folder)/(\w+)").unwrap();
@@ -18,13 +22,11 @@ pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     }
 }
 
-pub async fn save_file(
-    path: &PathBuf,
-    mut response: reqwest::Response,
-) -> Result<(), anyhow::Error> {
+pub async fn save_file(path: &PathBuf, response: reqwest::Response) -> Result<(), anyhow::Error> {
     let mut file = tokio::fs::File::create(path).await?;
-    Ok(while let Some(chunk) = response.chunk().await? {
-        file.write_all(&chunk).await?;
+    let mut stream = response.bytes_stream();
+    Ok(while let Some(chunk) = stream.next().await {
+        file.write_all(&chunk?).await?;
     })
 }
 
@@ -47,21 +49,6 @@ pub fn parse_download_link(html: &str) -> Option<String> {
     Some(link)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use reqwest::blocking::get;
-    #[test]
-    fn test_parse_download_link() {
-        let html = get("https://www.mediafire.com/file/9qkaxfrmd78vyj3/Recovery.exe/file")
-            .unwrap()
-            .text()
-            .unwrap();
-        let link = parse_download_link(&html);
-        assert!(link.is_some());
-    }
-}
-
 pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, std::io::Error> {
     let mut file = File::open(file_path)?;
     let mut contents = Vec::new();
@@ -71,4 +58,36 @@ pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, s
     let actual_hash_str = &hex::encode(actual_hash.as_ref());
 
     Ok(actual_hash_str == expected_hash)
+}
+
+pub fn build_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .default_headers(HeaderMap::from_iter(
+            HEADERS
+                .iter()
+                .map(|(k, v)| (k.clone(), HeaderValue::from_str(v).unwrap())),
+        ))
+        .build()
+        .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_parse_download_link() {
+        let client = build_client();
+
+        let html = client
+            .get("https://www.mediafire.com/file/tb1d35twcp7oj3p")
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let link = parse_download_link(&html);
+        assert!(link.is_some());
+    }
 }

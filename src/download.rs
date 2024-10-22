@@ -2,12 +2,11 @@ use crate::api::folder::get_content;
 use crate::types::file::File;
 use crate::types::folder::Folder;
 use crate::types::get_content::Response;
-use crate::utils::check_hash;
+use crate::utils::{build_client, check_hash};
 use crate::utils::{create_directory_if_not_exists, parse_download_link, save_file};
 use anyhow::{anyhow, Result};
 use colored::*;
 use futures::future::join_all;
-use reqwest::{get, Client};
 use std::path::PathBuf;
 use tokio::try_join;
 
@@ -119,20 +118,21 @@ pub async fn download_file(file: &File, path: PathBuf) -> Result<()> {
         format!("[INFO] Downloading file {}", get_bold_file_name(&path)).blue()
     );
 
-    let download_link = {
-        let client = Client::new();
-        let request = client.head(&file.links.normal_download).build()?;
-        let body = client.execute(request).await?;
-
-        if body.headers().get("content-type").unwrap() == &"text/html; charset=UTF-8" {
-            parse_download_link(&get(&file.links.normal_download).await?.text().await?)
+    let client = build_client();
+    let response = {
+        let response = client.get(&file.links.normal_download).send().await?;
+        if response.headers().get("content-type").unwrap() == &"text/html; charset=UTF-8" {
+            if let Some(link) = parse_download_link(&response.text().await?) {
+                Some(client.get(link).send().await?)
+            } else {
+                None
+            }
         } else {
-            Some(file.links.normal_download.clone())
+            Some(response)
         }
     };
 
-    if let Some(link) = download_link {
-        let response = get(link).await?;
+    if let Some(response) = response {
         match save_file(&path, response).await {
             Ok(_) => {
                 println!(
