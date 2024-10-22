@@ -10,6 +10,7 @@ use crate::download::{download_file, download_folder};
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::{anyhow, Result};
 use clap::{arg, command, value_parser};
+use indicatif::MultiProgress;
 
 use std::path::PathBuf;
 
@@ -29,10 +30,17 @@ async fn main() -> Result<()> {
                 .default_value(".")
                 .value_parser(value_parser!(PathBuf)),
         )
+        .arg(
+            arg!(-m --max <MAX> "Maximum number of concurrent downloads")
+                .required(false)
+                .default_value("10")
+                .value_parser(value_parser!(usize)),
+        )
         .get_matches();
 
     let url = matches.get_one::<String>("URL").unwrap();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
+    let max = *matches.get_one::<usize>("max").unwrap();
     let option = match_mediafire_valid_url(url);
 
     if let Some((mode, key)) = option {
@@ -40,7 +48,7 @@ async fn main() -> Result<()> {
             let response = folder::get_info(&key).await;
             if let Ok(response) = response {
                 if let Some(folder) = response.folder_info {
-                    download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
+                    download_folder(&key, path.join(PathBuf::from(folder.name)), 1, max).await?;
                     return Ok(());
                 }
             }
@@ -50,7 +58,7 @@ async fn main() -> Result<()> {
             if let Ok(response) = response {
                 if let Some(file_info) = response.file_info {
                     let path = path.join(PathBuf::from(&file_info.filename));
-                    download_file(&file_info.into(), path).await?;
+                    download_file(&file_info.into(), path, &MultiProgress::new()).await?;
                     return Ok(());
                 }
             }

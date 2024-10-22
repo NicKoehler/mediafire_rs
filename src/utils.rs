@@ -1,5 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue};
 use ring::digest;
@@ -22,12 +23,32 @@ pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     }
 }
 
-pub async fn save_file(path: &PathBuf, response: reqwest::Response) -> Result<(), anyhow::Error> {
+pub async fn save_file(
+    path: &PathBuf,
+    response: reqwest::Response,
+    multi_progress: &MultiProgress,
+) -> Result<(), anyhow::Error> {
+    let bar = ProgressBar::new(response.content_length().unwrap());
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:30}] {percent.}% ({bytes}/{total_bytes}) -> {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    let bar = multi_progress.add(bar);
+    bar.set_message(format!("{}", path.file_name().unwrap().to_str().unwrap()));
+
     let mut file = tokio::fs::File::create(path).await?;
     let mut stream = response.bytes_stream();
-    Ok(while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
-    })
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        bar.inc(chunk.len() as u64);
+        file.write_all(&chunk).await?;
+        file.flush().await?;
+    }
+    bar.finish();
+
+    Ok(())
 }
 
 pub async fn create_directory_if_not_exists(path: &PathBuf) -> Result<()> {
