@@ -122,7 +122,7 @@ pub async fn download_file(
 
     if download_job.path.is_file() {
         if check_hash(&download_job.path, &download_job.file.hash)? {
-            bar.finish_with_message("Already downloaded 🎉");
+            bar.abandon_with_message("Already downloaded 🎉");
             return Ok(());
         }
     }
@@ -146,7 +146,7 @@ pub async fn download_file(
 
     if let Some(response) = response {
         if let Err(_) = save_file(&download_job.path, response, &bar).await {
-            bar.finish_with_message("Failed to download ❌");
+            bar.abandon_with_message("Failed to download ❌");
             return Err(anyhow!("Invalid download link"));
         }
     }

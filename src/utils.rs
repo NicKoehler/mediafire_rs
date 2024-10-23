@@ -47,7 +47,7 @@ pub async fn save_file(
         file.write_all(&chunk).await?;
         file.flush().await?;
     }
-    progress_bar.finish_with_message("✅");
+    progress_bar.abandon_with_message("✅");
     Ok(())
 }
 
