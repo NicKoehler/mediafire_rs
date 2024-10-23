@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue};
 use ring::digest;
@@ -26,28 +26,28 @@ pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
 pub async fn save_file(
     path: &PathBuf,
     response: reqwest::Response,
-    multi_progress: &MultiProgress,
+    progress_bar: &ProgressBar,
 ) -> Result<(), anyhow::Error> {
-    let bar = ProgressBar::new(response.content_length().unwrap());
-    bar.set_style(
-        ProgressStyle::default_bar()
-            .template("[{bar:30}] {percent.}% ({bytes}/{total_bytes}) -> {msg}")
-            .unwrap()
-            .progress_chars("=>-"),
+    progress_bar.set_style(
+        progress_bar
+            .style()
+            .template(&format!(
+                "[{{bar:30}}] {{percent}}% ({{bytes}}/{{total_bytes}}) -> {{msg}} · {}",
+                path.file_name().unwrap().to_str().unwrap()
+            ))
+            .unwrap(),
     );
-    let bar = multi_progress.add(bar);
-    bar.set_message(format!("{}", path.file_name().unwrap().to_str().unwrap()));
-
+    progress_bar.set_message("🔽");
+    progress_bar.set_length(response.content_length().unwrap());
     let mut file = tokio::fs::File::create(path).await?;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
-        bar.inc(chunk.len() as u64);
+        progress_bar.inc(chunk.len() as u64);
         file.write_all(&chunk).await?;
         file.flush().await?;
     }
-    bar.finish();
-
+    progress_bar.finish_with_message("✅");
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 use crate::types::permissions::Permissions;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct File {
     pub quickkey: String,
     pub hash: String,
@@ -24,7 +24,7 @@ pub struct File {
     pub created_utc: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Links {
     pub normal_download: String,
 }
