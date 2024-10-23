@@ -14,7 +14,6 @@ use clap::{arg, command, value_parser};
 use deadqueue::unlimited::Queue;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
-use indicatif::ProgressFinish;
 use indicatif::ProgressStyle;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -53,18 +52,12 @@ async fn main() -> Result<()> {
 
     let total_downloads = Arc::new(Mutex::new(0));
     let total_failed = Arc::new(Mutex::new(0));
-
     let queue: Arc<Queue<DownloadJob>> = Arc::new(Queue::new());
-
     let multi_progress_bar = Arc::new(MultiProgress::new());
 
-    let total_bar = Arc::new(
-        multi_progress_bar
-            .add(ProgressBar::new(0))
-            .with_finish(ProgressFinish::AndLeave),
-    );
-    total_bar.enable_steady_tick(Duration::from_millis(120));
-    total_bar.set_style(
+    let total_progress_bar = Arc::new(multi_progress_bar.add(ProgressBar::new(0)));
+    total_progress_bar.enable_steady_tick(Duration::from_millis(120));
+    total_progress_bar.set_style(
         ProgressStyle::default_bar()
             .template("Fetching data · {msg} {spinner}")
             .unwrap(),
@@ -80,7 +73,7 @@ async fn main() -> Result<()> {
                         path.join(PathBuf::from(folder.name)),
                         1,
                         queue.clone(),
-                        total_bar.clone(),
+                        total_progress_bar.clone(),
                     )
                     .await?;
                 }
@@ -97,32 +90,28 @@ async fn main() -> Result<()> {
         }
     }
 
-    total_bar.finish_with_message("Done 🎉");
-
     if queue.len() == 0 {
         return Err(anyhow!("No files to download"));
     }
 
-    let total_bar = Arc::new(
-        multi_progress_bar
-            .add(ProgressBar::new(queue.len() as u64))
-            .with_finish(ProgressFinish::AndLeave),
-    );
+    total_progress_bar.disable_steady_tick();
+    total_progress_bar.set_length(queue.len() as u64);
 
-    total_bar.set_style(
-        total_bar
-            .style()
+    total_progress_bar.set_style(
+        ProgressStyle::default_bar()
             .template("[{bar:30}] {pos}/{len} ({percent}%) - {msg}")
             .unwrap()
             .progress_chars("=>-"),
     );
 
+    total_progress_bar.set_message("Downloading");
+
     for _ in 0..max {
         let queue = queue.clone();
+        let total_bar = total_progress_bar.clone();
         let multi_progress_bar = multi_progress_bar.clone();
-        let total_downloads = total_downloads.clone();
         let total_failed = total_failed.clone();
-        let total_bar = total_bar.clone();
+        let total_downloads = total_downloads.clone();
         tokio::spawn(async move {
             loop {
                 let task = queue.pop().await;
@@ -144,12 +133,12 @@ async fn main() -> Result<()> {
         });
     }
 
-    if let Some(total_bar_length) = total_bar.length() {
-        while total_bar.position() < total_bar_length {
+    if let Some(total_bar_length) = total_progress_bar.length() {
+        while total_progress_bar.position() < total_bar_length {
             sleep(Duration::from_millis(100)).await;
         }
     }
 
-    total_bar.finish();
+    total_progress_bar.finish();
     Ok(())
 }

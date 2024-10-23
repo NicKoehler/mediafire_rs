@@ -7,7 +7,7 @@ use crate::utils::{build_client, check_hash};
 use crate::utils::{create_directory_if_not_exists, parse_download_link, save_file};
 use anyhow::{anyhow, Result};
 use deadqueue::unlimited::Queue;
-use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::try_join;
@@ -108,9 +108,7 @@ pub async fn download_file(
     download_job: DownloadJob,
     multi_progress_bar: &MultiProgress,
 ) -> Result<()> {
-    let bar = multi_progress_bar
-        .insert_from_back(1, ProgressBar::new(0))
-        .with_finish(ProgressFinish::AndLeave);
+    let bar = multi_progress_bar.insert_from_back(1, ProgressBar::new(0));
     bar.set_style(
         ProgressStyle::default_bar()
             .template(&format!(
