@@ -1,13 +1,10 @@
 use anyhow::Result;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue};
 use ring::digest;
 use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-
-use crate::consts::HEADERS;
 
 pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     let re = Regex::new(r"mediafire\.com/(file|file_premium|folder)/(\w+)").unwrap();
@@ -50,26 +47,15 @@ pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, s
     Ok(actual_hash_str == expected_hash)
 }
 
-pub fn build_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .default_headers(HeaderMap::from_iter(
-            HEADERS
-                .iter()
-                .map(|(k, v)| (k.clone(), HeaderValue::from_str(v).unwrap())),
-        ))
-        .build()
-        .unwrap()
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::global::CLIENT;
+
     use super::*;
 
     #[tokio::test]
     async fn test_parse_download_link() {
-        let client = build_client();
-
-        let html = client
+        let html = &CLIENT
             .get("https://www.mediafire.com/file/tb1d35twcp7oj3p")
             .send()
             .await

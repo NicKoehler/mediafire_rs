@@ -1,6 +1,7 @@
 use crate::types::file::File;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone)]
 pub struct DownloadJob {
     pub file: File,
     pub path: PathBuf,

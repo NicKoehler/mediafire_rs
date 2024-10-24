@@ -1,6 +1,6 @@
 mod api;
-mod consts;
 mod download;
+mod global;
 mod types;
 mod utils;
 
@@ -11,12 +11,12 @@ use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{arg, command, value_parser};
-use deadqueue::unlimited::Queue;
-use indicatif::MultiProgress;
-use indicatif::ProgressBar;
+use global::FAILED_DOWNLOADS;
+use global::QUEUE;
+use global::SUCCESSFUL_DOWNLOADS;
+use global::TOTAL_PROGRESS_BAR;
 use indicatif::ProgressStyle;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 use types::download::DownloadJob;
@@ -50,14 +50,8 @@ async fn main() -> Result<()> {
     let max = *matches.get_one::<usize>("max").unwrap();
     let option = match_mediafire_valid_url(url);
 
-    let total_downloads = Arc::new(Mutex::new(0));
-    let total_failed = Arc::new(Mutex::new(0));
-    let queue: Arc<Queue<DownloadJob>> = Arc::new(Queue::new());
-    let multi_progress_bar = Arc::new(MultiProgress::new());
-
-    let total_progress_bar = Arc::new(multi_progress_bar.add(ProgressBar::new(0)));
-    total_progress_bar.enable_steady_tick(Duration::from_millis(120));
-    total_progress_bar.set_style(
+    TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
+    TOTAL_PROGRESS_BAR.set_style(
         ProgressStyle::default_bar()
             .template("Fetching data · {msg} {spinner}")
             .unwrap(),
@@ -68,14 +62,7 @@ async fn main() -> Result<()> {
             let response = folder::get_info(&key).await;
             if let Ok(response) = response {
                 if let Some(folder) = response.folder_info {
-                    download_folder(
-                        &key,
-                        path.join(PathBuf::from(folder.name)),
-                        1,
-                        queue.clone(),
-                        total_progress_bar.clone(),
-                    )
-                    .await?;
+                    download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
                 }
             }
         } else {
@@ -84,61 +71,62 @@ async fn main() -> Result<()> {
             if let Ok(response) = response {
                 if let Some(file_info) = response.file_info {
                     let path = path.join(PathBuf::from(&file_info.filename));
-                    queue.clone().push(DownloadJob::new(file_info.into(), path));
+                    QUEUE.push(DownloadJob::new(file_info.into(), path));
                 }
             }
         }
     }
 
-    if queue.len() == 0 {
+    if QUEUE.len() == 0 {
         return Err(anyhow!("No files to download"));
     }
 
-    total_progress_bar.disable_steady_tick();
-    total_progress_bar.set_length(queue.len() as u64);
+    TOTAL_PROGRESS_BAR.disable_steady_tick();
+    TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
 
-    total_progress_bar.set_style(
+    TOTAL_PROGRESS_BAR.set_style(
         ProgressStyle::default_bar()
             .template("[{bar:30}] {pos}/{len} ({percent}%) - {msg}")
             .unwrap()
             .progress_chars("-> "),
     );
 
-    total_progress_bar.set_message("Downloading");
+    TOTAL_PROGRESS_BAR.set_message("Downloading");
 
     for _ in 0..max {
-        let queue = queue.clone();
-        let total_bar = total_progress_bar.clone();
-        let multi_progress_bar = multi_progress_bar.clone();
-        let total_failed = total_failed.clone();
-        let total_downloads = total_downloads.clone();
         tokio::spawn(async move {
             loop {
-                let task = queue.pop().await;
-                let (downloaded, failed) = match download_file(task, &multi_progress_bar).await {
-                    Ok(_) => (1, 0),
-                    Err(_) => (0, 1),
+                let task = QUEUE.pop().await;
+                match download_file(&task).await {
+                    Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
+                    Err(_) => FAILED_DOWNLOADS.lock().await.push(task),
                 };
 
-                *total_downloads.lock().unwrap() += downloaded;
-                *total_failed.lock().unwrap() += failed;
-
-                total_bar.set_message(format!(
+                TOTAL_PROGRESS_BAR.set_message(format!(
                     "Successful downloads {} - Failed downloads {}",
-                    *total_downloads.lock().unwrap(),
-                    *total_failed.lock().unwrap()
+                    SUCCESSFUL_DOWNLOADS.lock().await.len(),
+                    FAILED_DOWNLOADS.lock().await.len()
                 ));
-                total_bar.inc(1);
+                TOTAL_PROGRESS_BAR.inc(1);
             }
         });
     }
 
-    if let Some(total_bar_length) = total_progress_bar.length() {
-        while total_progress_bar.position() < total_bar_length {
+    if let Some(total_bar_length) = TOTAL_PROGRESS_BAR.length() {
+        while TOTAL_PROGRESS_BAR.position() < total_bar_length {
             sleep(Duration::from_millis(100)).await;
         }
     }
 
-    total_progress_bar.finish();
+    TOTAL_PROGRESS_BAR.finish();
+
+    let failed = FAILED_DOWNLOADS.lock().await;
+    if failed.len() > 0 {
+        println!("Failed downloads:");
+        for job in failed.iter() {
+            println!("{}", job.path.display());
+        }
+    }
+
     Ok(())
 }
