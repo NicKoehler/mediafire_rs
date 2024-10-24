@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
         ProgressStyle::default_bar()
             .template("[{bar:30}] {pos}/{len} ({percent}%) - {msg}")
             .unwrap()
-            .progress_chars("=>-"),
+            .progress_chars("-> "),
     );
 
     total_progress_bar.set_message("Downloading");

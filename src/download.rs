@@ -4,12 +4,14 @@ use crate::types::file::File;
 use crate::types::folder::Folder;
 use crate::types::get_content::Response;
 use crate::utils::{build_client, check_hash};
-use crate::utils::{create_directory_if_not_exists, parse_download_link, save_file};
+use crate::utils::{create_directory_if_not_exists, parse_download_link};
 use anyhow::{anyhow, Result};
 use deadqueue::unlimited::Queue;
+use futures::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::try_join;
 
 #[async_recursion::async_recursion]
@@ -116,16 +118,24 @@ pub async fn download_file(
                 download_job.path.file_name().unwrap().to_str().unwrap()
             ))
             .unwrap()
-            .progress_chars("=>-"),
+            .progress_chars("-> "),
     );
-    bar.set_message("Getting download link...");
 
+    let mut download_again = false;
     if download_job.path.is_file() {
+        bar.set_message("File already exists, checking hash...");
         if check_hash(&download_job.path, &download_job.file.hash)? {
             bar.abandon_with_message("Already downloaded 🎉");
             return Ok(());
         }
+        download_again = true;
     }
+
+    bar.set_message(if download_again {
+        "Downloading again..."
+    } else {
+        "Getting download link..."
+    });
 
     let client = build_client();
     let response = {
@@ -145,10 +155,38 @@ pub async fn download_file(
     };
 
     if let Some(response) = response {
-        if let Err(_) = save_file(&download_job.path, response, &bar).await {
+        if let Err(_) = stream_file_to_disk(&download_job.path, response, &bar).await {
             bar.abandon_with_message("Failed to download ❌");
             return Err(anyhow!("Invalid download link"));
         }
     }
+    Ok(())
+}
+
+pub async fn stream_file_to_disk(
+    path: &PathBuf,
+    response: reqwest::Response,
+    progress_bar: &ProgressBar,
+) -> Result<(), anyhow::Error> {
+    progress_bar.set_style(
+        progress_bar
+            .style()
+            .template(&format!(
+                "[{{bar:30}}] {{percent}}% ({{bytes}}/{{total_bytes}}) -> {{msg}} · {}",
+                path.file_name().unwrap().to_str().unwrap()
+            ))
+            .unwrap(),
+    );
+    progress_bar.set_message("🔽");
+    progress_bar.set_length(response.content_length().unwrap());
+    let mut file = tokio::fs::File::create(path).await?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        progress_bar.inc(chunk.len() as u64);
+        file.write_all(&chunk).await?;
+        file.flush().await?;
+    }
+    progress_bar.abandon_with_message("✅");
     Ok(())
 }

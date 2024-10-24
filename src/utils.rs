@@ -1,6 +1,4 @@
 use anyhow::Result;
-use futures::StreamExt;
-use indicatif::ProgressBar;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue};
 use ring::digest;
@@ -8,7 +6,6 @@ use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use tokio::io::AsyncWriteExt;
 
 use crate::consts::HEADERS;
 
@@ -21,34 +18,6 @@ pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     } else {
         None
     }
-}
-
-pub async fn save_file(
-    path: &PathBuf,
-    response: reqwest::Response,
-    progress_bar: &ProgressBar,
-) -> Result<(), anyhow::Error> {
-    progress_bar.set_style(
-        progress_bar
-            .style()
-            .template(&format!(
-                "[{{bar:30}}] {{percent}}% ({{bytes}}/{{total_bytes}}) -> {{msg}} · {}",
-                path.file_name().unwrap().to_str().unwrap()
-            ))
-            .unwrap(),
-    );
-    progress_bar.set_message("🔽");
-    progress_bar.set_length(response.content_length().unwrap());
-    let mut file = tokio::fs::File::create(path).await?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        progress_bar.inc(chunk.len() as u64);
-        file.write_all(&chunk).await?;
-        file.flush().await?;
-    }
-    progress_bar.abandon_with_message("✅");
-    Ok(())
 }
 
 pub async fn create_directory_if_not_exists(path: &PathBuf) -> Result<()> {
