@@ -89,6 +89,7 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
 
     let mut download_again = false;
     if download_job.path.is_file() {
+        bar.set_message("💾");
         bar.set_prefix("File already exists, checking hash...");
         if check_hash(&download_job.path, &download_job.file.hash)? {
             bar.set_prefix(
@@ -106,6 +107,7 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
         download_again = true;
     }
 
+    bar.set_message("🌀");
     bar.set_prefix(if download_again {
         "Downloading again..."
     } else {
