@@ -23,7 +23,7 @@ use types::download::DownloadJob;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let matches = command!()
+    let get_matches = command!()
         .author("NicKoehler")
         .color(clap::ColorChoice::Always)
         .arg(
@@ -44,6 +44,7 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(usize)),
         )
         .get_matches();
+    let matches = get_matches;
 
     let url = matches.get_one::<String>("URL").unwrap();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
@@ -57,24 +58,31 @@ async fn main() -> Result<()> {
             .unwrap(),
     );
 
-    if let Some((mode, key)) = option {
-        if mode == "folder" {
-            let response = folder::get_info(&key).await;
-            if let Ok(response) = response {
-                if let Some(folder) = response.folder_info {
-                    download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
-                }
-            }
-        } else {
-            create_directory_if_not_exists(&path).await?;
-            let response = file::get_info(&key).await;
-            if let Ok(response) = response {
-                if let Some(file_info) = response.file_info {
-                    let path = path.join(PathBuf::from(&file_info.filename));
-                    QUEUE.push(DownloadJob::new(file_info.into(), path));
-                }
+    if option.is_none() {
+        return Err(anyhow!("Invalid Mediafire URL"));
+    }
+
+    let (mode, key) = option.unwrap();
+
+    match mode.as_str() {
+        "folder" => {
+            if let Some(folder) = folder::get_info(&key).await?.folder_info {
+                download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
+            } else {
+                return Err(anyhow!("Invalid Mediafire folder URL"));
             }
         }
+        "file" => {
+            create_directory_if_not_exists(&path).await?;
+            let response = file::get_info(&key).await?;
+            if let Some(file_info) = response.file_info {
+                let path = path.join(PathBuf::from(&file_info.filename));
+                QUEUE.push(DownloadJob::new(file_info.into(), path));
+            } else {
+                return Err(anyhow!("Invalid Mediafire file URL"));
+            }
+        }
+        _ => return Err(anyhow!("Invalid Mediafire URL")),
     }
 
     if QUEUE.len() == 0 {
@@ -83,7 +91,6 @@ async fn main() -> Result<()> {
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
     TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
-
     TOTAL_PROGRESS_BAR.set_style(
         ProgressStyle::default_bar()
             .template("[{bar:30}] {pos}/{len} ({percent}%) - {msg}")

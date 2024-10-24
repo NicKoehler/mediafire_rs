@@ -22,5 +22,6 @@ lazy_static! {
     pub static ref TOTAL_PROGRESS_BAR: ProgressBar = MULTI_PROGRESS_BAR.add(ProgressBar::new(0));
 
     pub static ref SUCCESSFUL_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
+
     pub static ref FAILED_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
 }
