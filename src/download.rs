@@ -1,5 +1,5 @@
 use crate::api::folder::get_content;
-use crate::global::{CLIENT, MULTI_PROGRESS_BAR, QUEUE, TOTAL_PROGRESS_BAR};
+use crate::global::*;
 use crate::types::download::DownloadJob;
 use crate::types::file::File;
 use crate::types::folder::Folder;
@@ -8,7 +8,7 @@ use crate::utils::check_hash;
 use crate::utils::{create_directory_if_not_exists, parse_download_link};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::try_join;
@@ -68,7 +68,7 @@ async fn download_folders(folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> R
     for folder in folders {
         let folder_path = path.join(&folder.name);
         if let Err(e) = download_folder(&folder.folderkey, folder_path, chunk).await {
-            TOTAL_PROGRESS_BAR.set_message(format!("Error: {}", e));
+            return Err(e);
         }
     }
     Ok(())
@@ -76,27 +76,37 @@ async fn download_folders(folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> R
 
 pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
     let bar = MULTI_PROGRESS_BAR.insert_from_back(1, ProgressBar::new(0));
-    bar.set_style(
-        ProgressStyle::default_bar()
-            .template(&format!(
-                "[{{bar:30}}] {{msg}} · {}",
-                download_job.path.file_name().unwrap().to_str().unwrap()
-            ))
+    bar.set_style(PROGRESS_STYLE.clone());
+    bar.set_prefix(
+        download_job
+            .path
+            .file_name()
             .unwrap()
-            .progress_chars("-> "),
+            .to_str()
+            .unwrap()
+            .to_string(),
     );
 
     let mut download_again = false;
     if download_job.path.is_file() {
-        bar.set_message("File already exists, checking hash...");
+        bar.set_prefix("File already exists, checking hash...");
         if check_hash(&download_job.path, &download_job.file.hash)? {
-            bar.abandon_with_message("Already downloaded 🎉");
+            bar.set_prefix(
+                download_job
+                    .path
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            );
+            bar.abandon_with_message("✅");
             return Ok(());
         }
         download_again = true;
     }
 
-    bar.set_message(if download_again {
+    bar.set_prefix(if download_again {
         "Downloading again..."
     } else {
         "Getting download link..."
@@ -120,9 +130,10 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
     };
 
     if let Some(response) = response {
-        if let Err(_) = stream_file_to_disk(&download_job.path, response, &bar).await {
-            bar.abandon_with_message("Failed to download ❌");
-            return Err(anyhow!("Invalid download link"));
+        if let Err(e) = stream_file_to_disk(&download_job.path, response, &bar).await {
+            bar.set_style(PROGRESS_STYLE.clone());
+            bar.abandon_with_message("❌");
+            return Err(e);
         }
     }
     Ok(())
@@ -133,15 +144,8 @@ pub async fn stream_file_to_disk(
     response: reqwest::Response,
     progress_bar: &ProgressBar,
 ) -> Result<(), anyhow::Error> {
-    progress_bar.set_style(
-        progress_bar
-            .style()
-            .template(&format!(
-                "[{{bar:30}}] {{percent}}% ({{bytes}}/{{total_bytes}}) -> {{msg}} · {}",
-                path.file_name().unwrap().to_str().unwrap()
-            ))
-            .unwrap(),
-    );
+    progress_bar.set_style(PROGRESS_STYLE_DOWNLOAD.clone());
+    progress_bar.set_prefix(path.file_name().unwrap().to_str().unwrap().to_string());
     progress_bar.set_message("🔽");
     progress_bar.set_length(response.content_length().unwrap());
     let mut file = tokio::fs::File::create(path).await?;
@@ -152,6 +156,7 @@ pub async fn stream_file_to_disk(
         file.write_all(&chunk).await?;
         file.flush().await?;
     }
+    progress_bar.set_style(PROGRESS_STYLE.clone());
     progress_bar.abandon_with_message("✅");
     Ok(())
 }

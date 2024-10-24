@@ -1,5 +1,5 @@
 use deadqueue::unlimited::Queue;
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING, USER_AGENT};
 use tokio::sync::Mutex;
@@ -13,6 +13,26 @@ lazy_static! {
             (ACCEPT_ENCODING, HeaderValue::from_static("gzip")),
         ]))
         .build()
+        .unwrap();
+
+    pub static ref PROGRESS_STYLE_TOTAL_START: ProgressStyle = ProgressStyle::default_bar()
+        .progress_chars("-> ")
+        .template("{spinner} Fetching data · {msg:.blue}")
+        .unwrap();
+
+    pub static ref PROGRESS_STYLE_TOTAL_DOWNLOAD: ProgressStyle = ProgressStyle::default_bar()
+        .progress_chars("-> ")
+        .template("[{bar:30.blue}] {pos}/{len} ({percent}%) · {msg:.green} · {prefix:.red}")
+        .unwrap();
+
+    pub static ref PROGRESS_STYLE: ProgressStyle = ProgressStyle::default_bar()
+        .progress_chars("-> ")
+        .template("[{bar:30.green}] · {msg} · {prefix:.blue}")
+        .unwrap();
+
+    pub static ref PROGRESS_STYLE_DOWNLOAD: ProgressStyle = ProgressStyle::default_bar()
+        .progress_chars("-> ")
+        .template("[{bar:30.green}] · {msg} · {percent}% ({bytes:.magenta}/{total_bytes:.magenta}) · {prefix:.blue}")
         .unwrap();
 
     pub static ref QUEUE: Queue<DownloadJob> = Queue::new();

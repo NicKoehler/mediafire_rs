@@ -11,11 +11,7 @@ use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{arg, command, value_parser};
-use global::FAILED_DOWNLOADS;
-use global::QUEUE;
-use global::SUCCESSFUL_DOWNLOADS;
-use global::TOTAL_PROGRESS_BAR;
-use indicatif::ProgressStyle;
+use global::*;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -52,11 +48,7 @@ async fn main() -> Result<()> {
     let option = match_mediafire_valid_url(url);
 
     TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-    TOTAL_PROGRESS_BAR.set_style(
-        ProgressStyle::default_bar()
-            .template("Fetching data · {msg} {spinner}")
-            .unwrap(),
-    );
+    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
 
     if option.is_none() {
         return Err(anyhow!("Invalid Mediafire URL"));
@@ -91,12 +83,7 @@ async fn main() -> Result<()> {
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
     TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
-    TOTAL_PROGRESS_BAR.set_style(
-        ProgressStyle::default_bar()
-            .template("[{bar:30}] {pos}/{len} ({percent}%) - {msg}")
-            .unwrap()
-            .progress_chars("-> "),
-    );
+    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_DOWNLOAD.clone());
 
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
@@ -109,11 +96,16 @@ async fn main() -> Result<()> {
                     Err(_) => FAILED_DOWNLOADS.lock().await.push(task),
                 };
 
-                TOTAL_PROGRESS_BAR.set_message(format!(
-                    "Successful downloads {} - Failed downloads {}",
-                    SUCCESSFUL_DOWNLOADS.lock().await.len(),
+                TOTAL_PROGRESS_BAR.set_prefix(format!(
+                    "Failed downloads {}",
                     FAILED_DOWNLOADS.lock().await.len()
                 ));
+
+                TOTAL_PROGRESS_BAR.set_message(format!(
+                    "Successful downloads {}",
+                    SUCCESSFUL_DOWNLOADS.lock().await.len()
+                ));
+
                 TOTAL_PROGRESS_BAR.inc(1);
             }
         });
