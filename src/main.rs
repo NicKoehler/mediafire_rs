@@ -122,9 +122,13 @@ async fn main() -> Result<()> {
     let failed = FAILED_DOWNLOADS.lock().await;
     if failed.len() > 0 {
         println!("Failed downloads:");
-        for job in failed.iter() {
-            println!("{}", job.path.display());
-        }
+        failed.iter().for_each(|job| {
+            println!(
+                "{} · {}",
+                job.path.file_name().unwrap().to_str().unwrap(),
+                job.file.links.normal_download
+            )
+        });
     }
 
     Ok(())

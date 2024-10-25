@@ -25,6 +25,11 @@ lazy_static! {
         .template("[{bar:30.blue}] {pos}/{len} ({percent}%) · {msg:.green} · {prefix:.red}")
         .unwrap();
 
+    pub static ref PROGRESS_STYLE_ERROR: ProgressStyle = ProgressStyle::default_bar()
+        .progress_chars("-> ")
+        .template("[{bar:30.green}] · {msg} · {prefix:.red}")
+        .unwrap();
+
     pub static ref PROGRESS_STYLE: ProgressStyle = ProgressStyle::default_bar()
         .progress_chars("-> ")
         .template("[{bar:30.green}] · {msg} · {prefix:.blue}")

@@ -131,9 +131,25 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
         }
     };
 
+    bar.set_prefix(
+        download_job
+            .path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
+    );
+
+    if response.is_none() {
+        bar.set_style(PROGRESS_STYLE_ERROR.clone());
+        bar.abandon_with_message("❌");
+        return Err(anyhow!("Error getting download link"));
+    }
+
     if let Some(response) = response {
         if let Err(e) = stream_file_to_disk(&download_job.path, response, &bar).await {
-            bar.set_style(PROGRESS_STYLE.clone());
+            bar.set_style(PROGRESS_STYLE_ERROR.clone());
             bar.abandon_with_message("❌");
             return Err(e);
         }
@@ -147,7 +163,6 @@ pub async fn stream_file_to_disk(
     progress_bar: &ProgressBar,
 ) -> Result<(), anyhow::Error> {
     progress_bar.set_style(PROGRESS_STYLE_DOWNLOAD.clone());
-    progress_bar.set_prefix(path.file_name().unwrap().to_str().unwrap().to_string());
     progress_bar.set_message("🔽");
     progress_bar.set_length(response.content_length().unwrap());
     let mut file = tokio::fs::File::create(path).await?;
