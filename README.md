@@ -1,4 +1,6 @@
-<img width="300" style="display:block;margin:auto" src="logo.svg" alt="logo">
+<p align="center" style="background-color:white">
+  <img width="300" style="padding:1rem" src="logo.svg" alt="logo">
+</p>
 
 async rust rewrite of [mediafire_bulk_downloader](https://github.com/nickoehler/mediafire_bulk_downloader)
 
