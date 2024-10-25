@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
                 return Err(anyhow!("Invalid Mediafire folder URL"));
             }
         }
-        "file" => {
+        "file" | "file_premium" => {
             create_directory_if_not_exists(&path).await?;
             let response = file::get_info(&key).await?;
             if let Some(file_info) = response.file_info {
