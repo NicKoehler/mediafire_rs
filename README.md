@@ -1,7 +1,10 @@
 <p align="center" >
   <img src="assets/logo.svg" alt="logo">
-  <img src="assets/demo.gif" alt="mediafire_rs">
 </p>
+
+## Preview
+
+<img src="assets/demo.gif" alt="mediafire_rs">
 
 async rust rewrite of [mediafire_bulk_downloader](https://github.com/nickoehler/mediafire_bulk_downloader)
 
