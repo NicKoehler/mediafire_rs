@@ -1,12 +1,18 @@
+
 <p align="center" >
   <img src="assets/logo.svg" alt="logo">
+  <strong>
+    Async rust rewrite of
+    <a href="https://github.com/nickoehler/mediafire_bulk_downloader">
+      mediafire_bulk_downloader
+    </a>
+  </strong>
 </p>
 
 ## Preview
 
 <img src="assets/demo.gif" alt="mediafire_rs">
 
-async rust rewrite of [mediafire_bulk_downloader](https://github.com/nickoehler/mediafire_bulk_downloader)
 
 ## Installation
 
