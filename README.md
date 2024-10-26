@@ -1,10 +1,9 @@
 <p align="center" >
-  <img src="logo.svg" alt="logo">
+  <img src="assets/logo.svg" alt="logo">
+  <img src="assets/demo.gif" alt="mediafire_rs">
 </p>
 
 async rust rewrite of [mediafire_bulk_downloader](https://github.com/nickoehler/mediafire_bulk_downloader)
-
-![mediafire_rs](https://vhs.charm.sh/vhs-3uuIM9WYJDmugQeSw1bLNO.gif)
 
 ## Installation
 
