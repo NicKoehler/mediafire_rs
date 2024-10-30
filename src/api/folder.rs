@@ -11,21 +11,21 @@ pub async fn get_content(
     content_type: &str,
     chunk: u32,
 ) -> Result<get_content::Response, reqwest::Error> {
-    return get(format!(
+    get(format!(
         "{BASE_URL_GET_CONTENT}{folder_key}&content_type={content_type}&chunk={chunk}"
     ))
     .await?
     .json::<get_content::Root>()
     .await
-    .map(|root| root.response);
+    .map(|root| root.response)
 }
 
 pub async fn get_info(folder_key: &str) -> Result<get_info::Response, reqwest::Error> {
-    return get(format!("{BASE_URL_GET_INFO}{folder_key}"))
+    get(format!("{BASE_URL_GET_INFO}{folder_key}"))
         .await?
         .json::<get_info::Root>()
         .await
-        .map(|root| root.response);
+        .map(|root| root.response)
 }
 
 #[cfg(test)]

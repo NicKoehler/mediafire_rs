@@ -9,31 +9,31 @@ use crate::utils::{create_directory_if_not_exists, parse_download_link};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use indicatif::ProgressBar;
-use std::path::PathBuf;
+use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::try_join;
 
 #[async_recursion::async_recursion]
-pub async fn download_folder(folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
-    create_directory_if_not_exists(&path).await?;
-    TOTAL_PROGRESS_BAR.set_message(format!(
-        "{}",
+pub async fn download_folder(folder_key: &str, path: &Path, chunk: u32) -> Result<()> {
+    create_directory_if_not_exists(path).await?;
+    TOTAL_PROGRESS_BAR.set_message(
         path.components()
             .last()
             .unwrap()
             .as_os_str()
             .to_str()
             .unwrap()
-    ));
+            .to_string(),
+    );
 
     let (folder_content, file_content) = get_folder_and_file_content(folder_key, chunk).await?;
 
     if let Some(files) = file_content.folder_content.files {
-        download_files(files, &path).await?;
+        download_files(files, path).await?;
     }
 
     if let Some(folders) = folder_content.folder_content.folders {
-        download_folders(folders, &path, chunk).await?;
+        download_folders(folders, path, chunk).await?;
     }
 
     if folder_content.folder_content.more_chunks == "yes"
@@ -55,7 +55,7 @@ async fn get_folder_and_file_content(folder_key: &str, chunk: u32) -> Result<(Re
     }
 }
 
-async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
+async fn download_files(files: Vec<File>, path: &Path) -> Result<()> {
     files.iter().for_each(|file| {
         let file_path = path.join(&file.filename);
         let download_job = DownloadJob::new(file.clone(), file_path);
@@ -64,12 +64,10 @@ async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn download_folders(folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> Result<()> {
+async fn download_folders(folders: Vec<Folder>, path: &Path, chunk: u32) -> Result<()> {
     for folder in folders {
         let folder_path = path.join(&folder.name);
-        if let Err(e) = download_folder(&folder.folderkey, folder_path, chunk).await {
-            return Err(e);
-        }
+        download_folder(&folder.folderkey, folder_path.as_path(), chunk).await?
     }
     Ok(())
 }
@@ -120,7 +118,7 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
             .get(&download_job.file.links.normal_download)
             .send()
             .await?;
-        if response.headers().get("content-type").unwrap() == &"text/html; charset=UTF-8" {
+        if response.headers().get("content-type").unwrap() == "text/html; charset=UTF-8" {
             if let Some(link) = parse_download_link(&response.text().await?) {
                 Some(client.get(link).send().await?)
             } else {
@@ -158,7 +156,7 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
 }
 
 pub async fn stream_file_to_disk(
-    path: &PathBuf,
+    path: &Path,
     response: reqwest::Response,
     progress_bar: &ProgressBar,
 ) -> Result<(), anyhow::Error> {

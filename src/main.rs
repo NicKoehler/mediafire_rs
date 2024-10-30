@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     match mode.as_str() {
         "folder" => {
             if let Some(folder) = folder::get_info(&key).await?.folder_info {
-                download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
+                download_folder(&key, path.join(PathBuf::from(folder.name)).as_path(), 1).await?;
             } else {
                 return Err(anyhow!("Invalid Mediafire folder URL"));
             }

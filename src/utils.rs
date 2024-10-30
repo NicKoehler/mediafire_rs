@@ -4,20 +4,15 @@ use ring::digest;
 use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
     let re = Regex::new(r"mediafire\.com/(file|file_premium|folder)/(\w+)").unwrap();
     let matches = re.captures(url);
-
-    if let Some(captures) = matches {
-        Some((captures[1].to_string(), captures[2].to_string()))
-    } else {
-        None
-    }
+    matches.map(|captures| (captures[1].to_string(), captures[2].to_string()))
 }
 
-pub async fn create_directory_if_not_exists(path: &PathBuf) -> Result<()> {
+pub async fn create_directory_if_not_exists(path: &Path) -> Result<()> {
     if !path.exists() {
         tokio::fs::create_dir_all(&path).await?;
     }
@@ -36,7 +31,7 @@ pub fn parse_download_link(html: &str) -> Option<String> {
     Some(link)
 }
 
-pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, std::io::Error> {
+pub fn check_hash(file_path: &Path, expected_hash: &String) -> Result<bool, std::io::Error> {
     let mut file = File::open(file_path)?;
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)?;
