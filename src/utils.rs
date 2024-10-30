@@ -58,7 +58,7 @@ mod tests {
             .text()
             .await
             .unwrap();
-        let link = parse_download_link(&html);
+        let link = parse_download_link(html);
         assert!(link.is_some());
     }
 }
