@@ -92,20 +92,19 @@ async fn main() -> Result<()> {
             loop {
                 let task = QUEUE.pop().await;
                 match download_file(&task).await {
-                    Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
-                    Err(_) => FAILED_DOWNLOADS.lock().await.push(task),
+                    Ok(_) => {
+                        let mut downloads = SUCCESSFUL_DOWNLOADS.lock().await;
+                        downloads.push(task);
+                        TOTAL_PROGRESS_BAR
+                            .set_message(format!("Successful downloads {}", downloads.len()));
+                    }
+                    Err(_) => {
+                        let mut downloads = FAILED_DOWNLOADS.lock().await;
+                        downloads.push(task);
+                        TOTAL_PROGRESS_BAR
+                            .set_prefix(format!("Failed downloads {}", downloads.len()));
+                    }
                 };
-
-                TOTAL_PROGRESS_BAR.set_prefix(format!(
-                    "Failed downloads {}",
-                    FAILED_DOWNLOADS.lock().await.len()
-                ));
-
-                TOTAL_PROGRESS_BAR.set_message(format!(
-                    "Successful downloads {}",
-                    SUCCESSFUL_DOWNLOADS.lock().await.len()
-                ));
-
                 TOTAL_PROGRESS_BAR.inc(1);
             }
         });
