@@ -1,5 +1,9 @@
 use crate::types::{get_content, get_info};
-use reqwest::get;
+// use reqwest::get;
+
+pub async fn get(url: String) -> Result<reqwest::Response, reqwest::Error> {
+    reqwest::Client::new().get(url).header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36)").send().await
+}
 
 const BASE_URL_GET_INFO: &str =
     "https://www.mediafire.com/api/1.5/folder/get_info.php?response_format=json&folder_key=";
