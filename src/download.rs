@@ -1,5 +1,6 @@
 use crate::api::folder::get_content;
 use crate::global::*;
+use crate::types::client::Client;
 use crate::types::download::DownloadJob;
 use crate::types::file::File;
 use crate::types::folder::Folder;
@@ -9,31 +10,12 @@ use crate::utils::{create_directory_if_not_exists, parse_download_link};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use indicatif::ProgressBar;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING, USER_AGENT};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::try_join;
 
-/// Setup the HTTP/S client for rewquest
-pub fn setup_client(proxies: Option<Vec<String>>) -> reqwest::Client
-{
-    let mut builder = reqwest::Client::builder()
-        .use_rustls_tls()
-        .default_headers(HeaderMap::from_iter([
-            (USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36")),
-            (ACCEPT_ENCODING, HeaderValue::from_static("gzip")),
-        ]));
-
-    for proxy in proxies.into_iter().flatten() {
-        builder = builder.proxy(reqwest::Proxy::all(proxy).unwrap());
-    }
-
-    builder.build()
-        .unwrap()
-}
-
 #[async_recursion::async_recursion]
-pub async fn download_folder(client: &reqwest::Client, folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
+pub async fn download_folder(client: &Client, folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
     create_directory_if_not_exists(&path).await?;
     TOTAL_PROGRESS_BAR.set_message(format!(
         "{}",
@@ -64,7 +46,7 @@ pub async fn download_folder(client: &reqwest::Client, folder_key: &str, path: P
     Ok(())
 }
 
-async fn get_folder_and_file_content(client: &reqwest::Client, folder_key: &str, chunk: u32) -> Result<(Response, Response)> {
+async fn get_folder_and_file_content(client: &Client, folder_key: &str, chunk: u32) -> Result<(Response, Response)> {
     match try_join!(
         get_content(client, folder_key, "folders", chunk),
         get_content(client, folder_key, "files", chunk)
@@ -83,7 +65,7 @@ async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn download_folders(client: &reqwest::Client, folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> Result<()> {
+async fn download_folders(client: &Client, folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> Result<()> {
     for folder in folders {
         let folder_path = path.join(&folder.name);
         if let Err(e) = download_folder(client, &folder.folderkey, folder_path, chunk).await {
@@ -93,7 +75,7 @@ async fn download_folders(client: &reqwest::Client, folders: Vec<Folder>, path: 
     Ok(())
 }
 
-pub async fn download_file(client: &reqwest::Client, download_job: &DownloadJob) -> Result<()> {
+pub async fn download_file(client: &Client, download_job: &DownloadJob) -> Result<()> {
     let bar = MULTI_PROGRESS_BAR.insert_from_back(1, ProgressBar::new(0));
     bar.set_style(PROGRESS_STYLE.clone());
     bar.set_prefix(
@@ -134,13 +116,14 @@ pub async fn download_file(client: &reqwest::Client, download_job: &DownloadJob)
     });
 
     let response = {
-        let response = client
+
+        let response = client.api_client
             .get(&download_job.file.links.normal_download)
             .send()
             .await?;
         if response.headers().get("content-type").unwrap() == &"text/html; charset=UTF-8" {
             if let Some(link) = parse_download_link(&response.text().await?) {
-                Some(client.get(link).send().await?)
+                Some(client.download_client.get(link).send().await?)
             } else {
                 None
             }

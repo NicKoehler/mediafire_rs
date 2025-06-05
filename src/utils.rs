@@ -49,14 +49,14 @@ pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, s
 
 #[cfg(test)]
 mod tests {
-    use crate::download::setup_client;
+    use crate::types::client::Client;
 
     use super::*;
 
     #[tokio::test]
     async fn test_parse_download_link() {
-        let client = setup_client(None);
-        let html = client
+        let client = Client::new(None, false);
+        let html = client.api_client
             .get("https://www.mediafire.com/file/tb1d35twcp7oj3p")
             .send()
             .await

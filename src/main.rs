@@ -10,9 +10,10 @@ use crate::download::{download_file, download_folder};
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::anyhow;
 use anyhow::Result;
+use clap::ArgAction;
 use clap::{arg, command, value_parser};
-use download::setup_client;
 use global::*;
+use types::client::Client;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
@@ -44,9 +45,13 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(usize)),
         )
         .arg(
-            arg!(-p --proxy <FILE> "Speficy a file to read proxies")
+            arg!(-p --proxy <FILE> "Speficy a file to read sockets from")
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(
+            arg!(--"proxy-download" "Downloads files through proxies, the default is to use proxies for the API only")
+                .action(ArgAction::SetTrue)
         )
         .get_matches();
     let matches = get_matches;
@@ -61,8 +66,9 @@ async fn main() -> Result<()> {
             .map_while(Result::ok)
             .collect()
     });
+    let proxy_downloads = *matches.get_one::<bool>("proxy-download").unwrap();
 
-    let client = std::sync::Arc::new(setup_client(proxies));
+    let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
     let option = match_mediafire_valid_url(url);
 
     TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));

@@ -31,6 +31,8 @@ Arguments:
 Options:
   -o, --output <OUTPUT>  Output directory [default: .]
   -m, --max <MAX>        Maximum number of concurrent downloads [default: 10]
+  -p, --proxy <FILE>     Speficy a file to read sockets from
+      --proxy-download   Downloads files through proxies, the default is to use proxies for the API only
   -h, --help             Print help
   -V, --version          Print version
 ```
