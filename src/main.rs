@@ -54,15 +54,15 @@ async fn main() -> Result<()> {
     let url = matches.get_one::<String>("URL").unwrap();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
     let max = *matches.get_one::<usize>("max").unwrap();
-	let proxies : Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path|
-	{
-		let proxy_file = File::open(path).unwrap();
-		io::BufReader::new(proxy_file).lines()
-			.map_while(Result::ok)
-			.collect()
-	});
+    let proxies : Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path|
+    {
+        let proxy_file = File::open(path).unwrap();
+        io::BufReader::new(proxy_file).lines()
+            .map_while(Result::ok)
+            .collect()
+    });
 
-	let client = std::sync::Arc::new(setup_client(proxies));
+    let client = std::sync::Arc::new(setup_client(proxies));
     let option = match_mediafire_valid_url(url);
 
     TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
     for _ in 0..max {
-		let client = client.clone();
+        let client = client.clone();
         tokio::spawn(async move {
             loop {
                 let task = QUEUE.pop().await;

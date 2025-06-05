@@ -55,7 +55,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_download_link() {
-		let client = setup_client(None);
+        let client = setup_client(None);
         let html = client
             .get("https://www.mediafire.com/file/tb1d35twcp7oj3p")
             .send()
