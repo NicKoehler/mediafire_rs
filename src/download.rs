@@ -9,12 +9,31 @@ use crate::utils::{create_directory_if_not_exists, parse_download_link};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use indicatif::ProgressBar;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING, USER_AGENT};
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::try_join;
 
+/// Setup the HTTP/S client for rewquest
+pub fn setup_client(proxies: Option<Vec<String>>) -> reqwest::Client
+{
+    let mut builder = reqwest::Client::builder()
+        .use_rustls_tls()
+        .default_headers(HeaderMap::from_iter([
+            (USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.90 Safari/537.36")),
+            (ACCEPT_ENCODING, HeaderValue::from_static("gzip")),
+        ]));
+
+    for proxy in proxies.into_iter().flatten() {
+        builder = builder.proxy(reqwest::Proxy::all(proxy).unwrap());
+    }
+
+    builder.build()
+        .unwrap()
+}
+
 #[async_recursion::async_recursion]
-pub async fn download_folder(folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
+pub async fn download_folder(client: &reqwest::Client, folder_key: &str, path: PathBuf, chunk: u32) -> Result<()> {
     create_directory_if_not_exists(&path).await?;
     TOTAL_PROGRESS_BAR.set_message(format!(
         "{}",
@@ -26,29 +45,29 @@ pub async fn download_folder(folder_key: &str, path: PathBuf, chunk: u32) -> Res
             .unwrap()
     ));
 
-    let (folder_content, file_content) = get_folder_and_file_content(folder_key, chunk).await?;
+    let (folder_content, file_content) = get_folder_and_file_content(client, folder_key, chunk).await?;
 
     if let Some(files) = file_content.folder_content.files {
         download_files(files, &path).await?;
     }
 
     if let Some(folders) = folder_content.folder_content.folders {
-        download_folders(folders, &path, chunk).await?;
+        download_folders(client, folders, &path, chunk).await?;
     }
 
     if folder_content.folder_content.more_chunks == "yes"
         || file_content.folder_content.more_chunks == "yes"
     {
-        download_folder(folder_key, path, chunk + 1).await?;
+        download_folder(client, folder_key, path, chunk + 1).await?;
     }
 
     Ok(())
 }
 
-async fn get_folder_and_file_content(folder_key: &str, chunk: u32) -> Result<(Response, Response)> {
+async fn get_folder_and_file_content(client: &reqwest::Client, folder_key: &str, chunk: u32) -> Result<(Response, Response)> {
     match try_join!(
-        get_content(folder_key, "folders", chunk),
-        get_content(folder_key, "files", chunk)
+        get_content(client, folder_key, "folders", chunk),
+        get_content(client, folder_key, "files", chunk)
     ) {
         Ok((folder_content, file_content)) => Ok((folder_content, file_content)),
         Err(_) => Err(anyhow!("Invalid Mediafire URL")),
@@ -64,17 +83,17 @@ async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn download_folders(folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> Result<()> {
+async fn download_folders(client: &reqwest::Client, folders: Vec<Folder>, path: &PathBuf, chunk: u32) -> Result<()> {
     for folder in folders {
         let folder_path = path.join(&folder.name);
-        if let Err(e) = download_folder(&folder.folderkey, folder_path, chunk).await {
+        if let Err(e) = download_folder(client, &folder.folderkey, folder_path, chunk).await {
             return Err(e);
         }
     }
     Ok(())
 }
 
-pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
+pub async fn download_file(client: &reqwest::Client, download_job: &DownloadJob) -> Result<()> {
     let bar = MULTI_PROGRESS_BAR.insert_from_back(1, ProgressBar::new(0));
     bar.set_style(PROGRESS_STYLE.clone());
     bar.set_prefix(
@@ -114,7 +133,6 @@ pub async fn download_file(download_job: &DownloadJob) -> Result<()> {
         "Getting download link..."
     });
 
-    let client = &CLIENT;
     let response = {
         let response = client
             .get(&download_job.file.links.normal_download)

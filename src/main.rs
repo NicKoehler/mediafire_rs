@@ -11,7 +11,11 @@ use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{arg, command, value_parser};
+use download::setup_client;
 use global::*;
+use std::fs::File;
+use std::io;
+use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -39,12 +43,26 @@ async fn main() -> Result<()> {
                 .default_value("10")
                 .value_parser(value_parser!(usize)),
         )
+        .arg(
+            arg!(-p --proxy <FILE> "Speficy a file to read proxies")
+                .required(false)
+                .value_parser(value_parser!(PathBuf)),
+        )
         .get_matches();
     let matches = get_matches;
 
     let url = matches.get_one::<String>("URL").unwrap();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
     let max = *matches.get_one::<usize>("max").unwrap();
+	let proxies : Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path|
+	{
+		let proxy_file = File::open(path).unwrap();
+		io::BufReader::new(proxy_file).lines()
+			.map_while(Result::ok)
+			.collect()
+	});
+
+	let client = std::sync::Arc::new(setup_client(proxies));
     let option = match_mediafire_valid_url(url);
 
     TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
@@ -58,8 +76,8 @@ async fn main() -> Result<()> {
 
     match mode.as_str() {
         "folder" => {
-            if let Some(folder) = folder::get_info(&key).await?.folder_info {
-                download_folder(&key, path.join(PathBuf::from(folder.name)), 1).await?;
+            if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
+                download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1).await?;
             } else {
                 return Err(anyhow!("Invalid Mediafire folder URL"));
             }
@@ -88,10 +106,11 @@ async fn main() -> Result<()> {
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
     for _ in 0..max {
+		let client = client.clone();
         tokio::spawn(async move {
             loop {
                 let task = QUEUE.pop().await;
-                match download_file(&task).await {
+                match download_file(&client, &task).await {
                     Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
                     Err(_) => FAILED_DOWNLOADS.lock().await.push(task),
                 };
