@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
-    let re = Regex::new(r"mediafire\.com/(file|file_premium|folder)/(\w+)").unwrap();
+    let re = Regex::new(r"mediafire\.com/(file|file_premium|folder|download)/(\w+)").unwrap();
     let matches = re.captures(url);
 
     if let Some(captures) = matches {
