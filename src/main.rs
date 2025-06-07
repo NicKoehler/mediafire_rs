@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(usize)),
         )
         .arg(
-            arg!(-p --proxy <FILE> "Speficy a file to read sockets from")
+            arg!(-p --proxy <FILE> "Speficy a file to read proxies from")
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
         )
