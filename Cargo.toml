@@ -2,7 +2,7 @@
 name = "mediafire_rs"
 description = "Downloads files and folders from mediafire"
 authors = ["NicKoehler <grillinicola@proton.me"]
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
