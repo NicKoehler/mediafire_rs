@@ -2,8 +2,8 @@
 name = "mediafire_rs"
 description = "Downloads files and folders from mediafire"
 authors = ["NicKoehler <grillinicola@proton.me"]
-version = "0.1.7"
-edition = "2021"
+version = "0.1.8"
+edition = "2024"
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/NicKoehler/mediafire_rs"
@@ -29,7 +29,14 @@ async-recursion = "1.0.5"
 clap = { version = "4.5.20", features = ["cargo"] }
 tokio = { version = "1.41.0", features = ["full"] }
 serde = { version = "1.0.211", features = ["serde_derive"] }
-reqwest = { version = "0.12.12", features = ["stream", "json", "gzip", "rustls-tls", "socks"] }
+reqwest = { version = "0.12.12", features = [
+    "stream",
+    "json",
+    "gzip",
+    "rustls-tls",
+    "socks",
+] }
+base64 = "0.22.1"
 
 [profile.release]
 lto = true
