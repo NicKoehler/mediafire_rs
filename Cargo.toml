@@ -17,26 +17,20 @@ path = "src/main.rs"
 
 [dependencies]
 hex = "0.4.3"
-ring = "0.17.8"
-regex = "1.10.3"
-anyhow = "1.0.80"
-futures = "0.3.30"
-scraper = "0.19.0"
-deadqueue = "0.2.4"
-indicatif = "0.17.8"
+ring = "0.17.14"
+regex = "1.12.2"
+anyhow = "1.0.100"
+futures = "0.3.31"
+scraper = "0.25.0"
+deadqueue = "0.2.5"
+indicatif = "0.18.3"
 lazy_static = "1.5.0"
-async-recursion = "1.0.5"
-clap = { version = "4.5.20", features = ["cargo"] }
-tokio = { version = "1.41.0", features = ["full"] }
-serde = { version = "1.0.211", features = ["serde_derive"] }
-reqwest = { version = "0.12.12", features = [
-    "stream",
-    "json",
-    "gzip",
-    "rustls-tls",
-    "socks",
-] }
+async-recursion = "1.1.1"
+clap = { version = "4.5.54", features = ["cargo"] }
+tokio = { version = "1.49.0", features = ["full"] }
+serde = { version = "1.0.228", features = ["serde_derive"] }
 base64 = "0.22.1"
+reqwest = { version = "0.13.1", default-features = false, features = ["json", "native-tls", "stream", "gzip", "socks", "http2"] }
 
 [profile.release]
 lto = true
