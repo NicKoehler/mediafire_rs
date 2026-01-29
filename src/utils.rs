@@ -1,6 +1,6 @@
 use anyhow::Result;
 use regex::Regex;
-use ring::digest;
+use ring::digest::{Context, SHA256};
 use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
@@ -36,15 +36,43 @@ pub fn parse_download_link(html: &str) -> Option<String> {
     Some(link)
 }
 
-pub fn check_hash(file_path: &PathBuf, expected_hash: &String) -> Result<bool, std::io::Error> {
+pub fn check_hash(file_path: &PathBuf, expected_hash: &str) -> Result<bool, std::io::Error> {
+    let expected = expected_hash.trim().to_lowercase();
+
     let mut file = File::open(file_path)?;
-    let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
+    let mut buffer = [0u8; 8192];
 
-    let actual_hash = digest::digest(&digest::SHA256, &contents);
-    let actual_hash_str = &hex::encode(actual_hash.as_ref());
+    let actual_hash_hex = match expected.len() {
+        32 => {
+            // MD5
+            let mut context = md5::Context::new();
+            loop {
+                let count = file.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                context.consume(&buffer[..count]);
+            }
+            format!("{:x}", context.finalize())
+        }
+        64 => {
+            // SHA-256
+            let mut context = Context::new(&SHA256);
+            loop {
+                let count = file.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                context.update(&buffer[..count]);
+            }
+            hex::encode(context.finish().as_ref())
+        }
+        _ => {
+            return Ok(false);
+        }
+    };
 
-    Ok(actual_hash_str == expected_hash)
+    Ok(actual_hash_hex == expected)
 }
 
 #[cfg(test)]

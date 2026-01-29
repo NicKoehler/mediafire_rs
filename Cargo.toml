@@ -2,7 +2,7 @@
 name = "mediafire_rs"
 description = "Downloads files and folders from mediafire"
 authors = ["NicKoehler <grillinicola@proton.me"]
-version = "0.1.9"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 hex = "0.4.3"
+md5 = "0.8.0"
 ring = "0.17.14"
 regex = "1.12.2"
 anyhow = "1.0.100"
@@ -26,7 +27,7 @@ deadqueue = "0.2.5"
 indicatif = "0.18.3"
 lazy_static = "1.5.0"
 async-recursion = "1.1.1"
-clap = { version = "4.5.54", features = ["cargo"] }
+clap = { version = "4.5.55", features = ["cargo"] }
 tokio = { version = "1.49.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["serde_derive"] }
 reqwest = { version = "0.13.1", default-features = false, features = ["json", "native-tls", "stream", "gzip", "socks", "http2"] }

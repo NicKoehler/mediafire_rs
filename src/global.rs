@@ -39,5 +39,5 @@ lazy_static! {
 
     pub static ref SUCCESSFUL_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
 
-    pub static ref FAILED_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
+    pub static ref FAILED_DOWNLOADS: Mutex<Vec<(DownloadJob, anyhow::Error)>> = Mutex::new(Vec::new());
 }

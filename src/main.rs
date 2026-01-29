@@ -8,18 +8,18 @@ use crate::api::file;
 use crate::api::folder;
 use crate::download::{download_file, download_folder};
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use clap::ArgAction;
 use clap::{arg, command, value_parser};
 use global::*;
-use types::client::Client;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::sleep;
+use types::client::Client;
 use types::download::DownloadJob;
 
 #[tokio::main]
@@ -42,7 +42,13 @@ async fn main() -> Result<()> {
             arg!(-m --max <MAX> "Maximum number of concurrent downloads")
                 .required(false)
                 .default_value("10")
-                .value_parser(value_parser!(usize)),
+                .value_parser(value_parser!(u32).range(1..=100)),
+        )
+        .arg(
+            arg!(-t --tries <MAX> "Maximum number of tries to repeat for every download")
+                .required(false)
+                .default_value("1")
+                .value_parser(value_parser!(u32).range(1..=10)),
         )
         .arg(
             arg!(-p --proxy <FILE> "Speficy a file to read proxies from")
@@ -58,11 +64,12 @@ async fn main() -> Result<()> {
 
     let url = matches.get_one::<String>("URL").unwrap();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
-    let max = *matches.get_one::<usize>("max").unwrap();
-    let proxies : Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path|
-    {
+    let max = *matches.get_one::<u32>("max").unwrap();
+    let tries = *matches.get_one::<u32>("tries").unwrap();
+    let proxies: Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path| {
         let proxy_file = File::open(path).unwrap();
-        io::BufReader::new(proxy_file).lines()
+        io::BufReader::new(proxy_file)
+            .lines()
             .map_while(Result::ok)
             .collect()
     });
@@ -116,9 +123,9 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             loop {
                 let task = QUEUE.pop().await;
-                match download_file(&client, &task).await {
+                match download_file(&client, &task, tries).await {
                     Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
-                    Err(_) => FAILED_DOWNLOADS.lock().await.push(task),
+                    Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
                 };
 
                 TOTAL_PROGRESS_BAR.set_prefix(format!(
@@ -147,10 +154,11 @@ async fn main() -> Result<()> {
     let failed = FAILED_DOWNLOADS.lock().await;
     if failed.len() > 0 {
         println!("Failed downloads:");
-        failed.iter().for_each(|job| {
+        failed.iter().for_each(|(job, error)| {
             println!(
-                "{} · {}",
+                "{} · {} · {}",
                 job.path.file_name().unwrap().to_str().unwrap(),
+                error,
                 job.file.links.normal_download
             )
         });
