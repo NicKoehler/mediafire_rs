@@ -7,6 +7,8 @@ mod utils;
 use crate::api::file;
 use crate::api::folder;
 use crate::download::{download_file, download_folder};
+use crate::types::file_type::FileType;
+use crate::utils::get_file_type_by_key;
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::Result;
 use anyhow::anyhow;
@@ -78,34 +80,37 @@ async fn main() -> Result<()> {
     let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
     let option = match_mediafire_valid_url(url);
 
-    TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
-
     if option.is_none() {
         return Err(anyhow!("Invalid Mediafire URL"));
     }
 
-    let (mode, key) = option.unwrap();
+    let keys = option.unwrap();
 
-    match mode.as_str() {
-        "folder" => {
-            if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
-                download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1).await?;
-            } else {
-                return Err(anyhow!("Invalid Mediafire folder URL"));
+    TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
+    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
+
+    for key in keys.iter() {
+        match get_file_type_by_key(key) {
+            FileType::Folder => {
+                if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
+                    download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1)
+                        .await?;
+                } else {
+                    return Err(anyhow!("Invalid Mediafire folder URL"));
+                }
             }
-        }
-        "file" | "file_premium" | "download" => {
-            create_directory_if_not_exists(&path).await?;
-            let response = file::get_info(&key).await?;
-            if let Some(file_info) = response.file_info {
-                let path = path.join(PathBuf::from(&file_info.filename));
-                QUEUE.push(DownloadJob::new(file_info.into(), path));
-            } else {
-                return Err(anyhow!("Invalid Mediafire file URL"));
+            FileType::File => {
+                create_directory_if_not_exists(&path).await?;
+                let response = file::get_info(&key).await?;
+                if let Some(file_info) = response.file_info {
+                    let path = path.join(PathBuf::from(&file_info.filename));
+                    QUEUE.push(DownloadJob::new(file_info.into(), path));
+                } else {
+                    return Err(anyhow!("Invalid Mediafire file URL"));
+                }
             }
+            FileType::Invalid => return Err(anyhow!("Invalid Mediafire URL")),
         }
-        _ => return Err(anyhow!("Invalid Mediafire URL")),
     }
 
     if QUEUE.len() == 0 {
