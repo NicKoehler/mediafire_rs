@@ -6,8 +6,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-use crate::types::file_type::FileType;
-
 pub fn match_mediafire_valid_url(url: &str) -> Option<Vec<String>> {
     let re = Regex::new(r"mediafire\.com/(file|file_premium|folder|download)/([\w,]+)").unwrap();
     let matches = re.captures(url);
@@ -75,14 +73,6 @@ pub fn check_hash(file_path: &PathBuf, expected_hash: &str) -> Result<bool, std:
     };
 
     Ok(actual_hash_hex == expected)
-}
-
-pub fn get_file_type_by_key(key: &str) -> FileType {
-    match key.len() {
-        15 => FileType::File,
-        13 => FileType::Folder,
-        _ => FileType::Invalid,
-    }
 }
 
 #[cfg(test)]

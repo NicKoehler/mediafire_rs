@@ -8,7 +8,6 @@ use crate::api::file;
 use crate::api::folder;
 use crate::download::{download_file, download_folder};
 use crate::types::file_type::FileType;
-use crate::utils::get_file_type_by_key;
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::Result;
 use clap::ArgAction;
@@ -86,7 +85,7 @@ async fn main() -> Result<()> {
             TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
 
             for key in keys.iter() {
-                match get_file_type_by_key(key) {
+                match FileType::from_key(key) {
                     FileType::Folder => {
                         if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
                             download_folder(
