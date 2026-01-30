@@ -30,9 +30,9 @@ async fn main() -> Result<()> {
         .author("NicKoehler")
         .color(clap::ColorChoice::Always)
         .arg(
-            arg!([URL] "Folder or file to download")
+            arg!([URLS] "List of folders or files to download")
                 .required(true)
-                .value_parser(value_parser!(String)),
+                .value_parser(value_parser!(String)).num_args(1..),
         )
         .arg(
             arg!(-o --output <OUTPUT> "Output directory")
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(u32).range(1..=10)),
         )
         .arg(
-            arg!(-p --proxy <FILE> "Speficy a file to read proxies from")
+            arg!(-p --proxy <FILE> "Specify a file to read proxies from")
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
         )
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         .get_matches();
     let matches = get_matches;
 
-    let url = matches.get_one::<String>("URL").unwrap();
+    let urls: Vec<String> = matches.get_many("URLS").unwrap().cloned().collect();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
     let max = *matches.get_one::<u32>("max").unwrap();
     let tries = *matches.get_one::<u32>("tries").unwrap();
@@ -78,49 +78,50 @@ async fn main() -> Result<()> {
     let proxy_downloads = *matches.get_one::<bool>("proxy-download").unwrap();
 
     let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
-    let option = match_mediafire_valid_url(url);
+    for url in urls.iter() {
+        let option = match_mediafire_valid_url(url);
 
-    if option.is_none() {
-        return Err(anyhow!("Invalid Mediafire URL"));
-    }
+        if option.is_none() {
+            return Err(anyhow!("Invalid Mediafire URL"));
+        }
 
-    let keys = option.unwrap();
+        let keys = option.unwrap();
 
-    TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
+        TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
+        TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
 
-    for key in keys.iter() {
-        match get_file_type_by_key(key) {
-            FileType::Folder => {
-                if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
-                    download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1)
-                        .await?;
-                } else {
-                    return Err(anyhow!("Invalid Mediafire folder URL"));
+        for key in keys.iter() {
+            match get_file_type_by_key(key) {
+                FileType::Folder => {
+                    if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
+                        download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1)
+                            .await?;
+                    } else {
+                        return Err(anyhow!("Invalid Mediafire folder URL"));
+                    }
                 }
-            }
-            FileType::File => {
-                create_directory_if_not_exists(&path).await?;
-                let response = file::get_info(&key).await?;
-                if let Some(file_info) = response.file_info {
-                    let path = path.join(PathBuf::from(&file_info.filename));
-                    QUEUE.push(DownloadJob::new(file_info.into(), path));
-                } else {
-                    return Err(anyhow!("Invalid Mediafire file URL"));
+                FileType::File => {
+                    create_directory_if_not_exists(&path).await?;
+                    let response = file::get_info(&key).await?;
+                    if let Some(file_info) = response.file_info {
+                        let path = path.join(PathBuf::from(&file_info.filename));
+                        QUEUE.push(DownloadJob::new(file_info.into(), path));
+                    } else {
+                        return Err(anyhow!("Invalid Mediafire file URL"));
+                    }
                 }
+                FileType::Invalid => return Err(anyhow!("Invalid Mediafire URL")),
             }
-            FileType::Invalid => return Err(anyhow!("Invalid Mediafire URL")),
         }
     }
 
-    if QUEUE.len() == 0 {
+    if QUEUE.is_empty() {
         return Err(anyhow!("No files to download"));
     }
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
     TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
     TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_DOWNLOAD.clone());
-
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
     for _ in 0..max {
@@ -157,7 +158,7 @@ async fn main() -> Result<()> {
     TOTAL_PROGRESS_BAR.finish();
 
     let failed = FAILED_DOWNLOADS.lock().await;
-    if failed.len() > 0 {
+    if !failed.is_empty() {
         println!("Failed downloads:");
         failed.iter().for_each(|(job, error)| {
             println!(
