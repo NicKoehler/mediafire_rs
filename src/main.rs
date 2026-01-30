@@ -109,7 +109,10 @@ async fn main() -> Result<()> {
                         let response = file::get_info(&key).await?;
                         if let Some(file_info) = response.file_info {
                             let path = path.join(PathBuf::from(&file_info.filename));
-                            QUEUE.push(DownloadJob::new(file_info.into(), path));
+                            QUEUE
+                                .lock()
+                                .await
+                                .push(DownloadJob::new(file_info.into(), path));
                         } else {
                             println!(
                                 "{}",
@@ -135,13 +138,13 @@ async fn main() -> Result<()> {
         }
     }
 
-    if QUEUE.is_empty() {
+    if QUEUE.lock().await.is_empty() {
         println!("{}", "Warning: No files to download".yellow());
         return Ok(());
     }
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
-    TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
+    TOTAL_PROGRESS_BAR.set_length(QUEUE.lock().await.len() as u64);
     TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_DOWNLOAD.clone());
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
@@ -149,23 +152,30 @@ async fn main() -> Result<()> {
         let client = client.clone();
         tokio::spawn(async move {
             loop {
-                let task = QUEUE.pop().await;
-                match download_file(&client, &task, tries).await {
-                    Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
-                    Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
+                let task = {
+                    let mut queue = QUEUE.lock().await;
+                    queue.pop()
                 };
+                if let Some(task) = task {
+                    match download_file(&client, &task, tries).await {
+                        Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
+                        Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
+                    };
 
-                TOTAL_PROGRESS_BAR.set_prefix(format!(
-                    "Failed downloads {}",
-                    FAILED_DOWNLOADS.lock().await.len()
-                ));
+                    TOTAL_PROGRESS_BAR.set_prefix(format!(
+                        "Failed downloads {}",
+                        FAILED_DOWNLOADS.lock().await.len()
+                    ));
 
-                TOTAL_PROGRESS_BAR.set_message(format!(
-                    "Successful downloads {}",
-                    SUCCESSFUL_DOWNLOADS.lock().await.len()
-                ));
+                    TOTAL_PROGRESS_BAR.set_message(format!(
+                        "Successful downloads {}",
+                        SUCCESSFUL_DOWNLOADS.lock().await.len()
+                    ));
 
-                TOTAL_PROGRESS_BAR.inc(1);
+                    TOTAL_PROGRESS_BAR.inc(1);
+                } else {
+                    break;
+                }
             }
         });
     }

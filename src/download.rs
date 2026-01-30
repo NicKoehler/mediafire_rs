@@ -29,15 +29,7 @@ pub async fn download_folder(
     chunk: u32,
 ) -> Result<(), anyhow::Error> {
     create_directory_if_not_exists(&path).await?;
-    TOTAL_PROGRESS_BAR.set_message(format!(
-        "{}",
-        path.components()
-            .last()
-            .unwrap()
-            .as_os_str()
-            .to_str()
-            .unwrap()
-    ));
+    TOTAL_PROGRESS_BAR.set_message(format!("{}", file_name(&path)));
 
     let (folder_content, file_content) =
         get_folder_and_file_content(client, folder_key, chunk).await?;
@@ -74,11 +66,11 @@ async fn get_folder_and_file_content(
 }
 
 async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
-    files.iter().for_each(|file| {
+    for file in files {
         let file_path = path.join(&file.filename);
         let download_job = DownloadJob::new(file.clone(), file_path);
-        QUEUE.push(download_job);
-    });
+        QUEUE.lock().await.push(download_job);
+    }
     Ok(())
 }
 

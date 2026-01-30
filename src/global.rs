@@ -1,4 +1,5 @@
-use deadqueue::unlimited::Queue;
+use std::collections::BinaryHeap;
+
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
@@ -31,7 +32,7 @@ lazy_static! {
         .template("[{bar:30.green}] · {msg} · {percent}% ({bytes:.magenta}/{total_bytes:.magenta}) · {prefix:.blue}")
         .unwrap();
 
-    pub static ref QUEUE: Queue<DownloadJob> = Queue::new();
+    pub static ref QUEUE: Mutex<BinaryHeap<DownloadJob>> = Mutex::new(BinaryHeap::new());
 
     pub static ref MULTI_PROGRESS_BAR: indicatif::MultiProgress = indicatif::MultiProgress::new();
 
