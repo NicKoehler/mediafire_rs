@@ -31,6 +31,7 @@ clap = { version = "4.5.55", features = ["cargo"] }
 tokio = { version = "1.49.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["serde_derive"] }
 reqwest = { version = "0.13.1", default-features = false, features = ["json", "native-tls", "stream", "gzip", "socks", "http2"] }
+colored = "3.1.1"
 
 [profile.release]
 lto = true

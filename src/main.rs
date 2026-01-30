@@ -11,9 +11,9 @@ use crate::types::file_type::FileType;
 use crate::utils::get_file_type_by_key;
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::Result;
-use anyhow::anyhow;
 use clap::ArgAction;
 use clap::{arg, command, value_parser};
+use colored::*;
 use global::*;
 use std::fs::File;
 use std::io;
@@ -81,42 +81,64 @@ async fn main() -> Result<()> {
     for url in urls.iter() {
         let option = match_mediafire_valid_url(url);
 
-        if option.is_none() {
-            return Err(anyhow!("Invalid Mediafire URL"));
-        }
+        if let Some(keys) = option {
+            TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
+            TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
 
-        let keys = option.unwrap();
-
-        TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-        TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
-
-        for key in keys.iter() {
-            match get_file_type_by_key(key) {
-                FileType::Folder => {
-                    if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
-                        download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1)
+            for key in keys.iter() {
+                match get_file_type_by_key(key) {
+                    FileType::Folder => {
+                        if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
+                            download_folder(
+                                &client,
+                                &key,
+                                path.join(PathBuf::from(folder.name)),
+                                1,
+                            )
                             .await?;
-                    } else {
-                        return Err(anyhow!("Invalid Mediafire folder URL"));
+                        } else {
+                            println!(
+                                "{}",
+                                format!("Warning: Invalid Mediafire folder URL for {}", url)
+                                    .yellow()
+                            );
+                            continue;
+                        }
+                    }
+                    FileType::File => {
+                        create_directory_if_not_exists(&path).await?;
+                        let response = file::get_info(&key).await?;
+                        if let Some(file_info) = response.file_info {
+                            let path = path.join(PathBuf::from(&file_info.filename));
+                            QUEUE.push(DownloadJob::new(file_info.into(), path));
+                        } else {
+                            println!(
+                                "{}",
+                                format!("Warning: Invalid Mediafire file URL for {}", url).yellow()
+                            );
+                            continue;
+                        }
+                    }
+                    FileType::Invalid => {
+                        println!(
+                            "{}",
+                            format!("Warning: Invalid Mediafire URL: {}", url).yellow()
+                        );
+                        continue;
                     }
                 }
-                FileType::File => {
-                    create_directory_if_not_exists(&path).await?;
-                    let response = file::get_info(&key).await?;
-                    if let Some(file_info) = response.file_info {
-                        let path = path.join(PathBuf::from(&file_info.filename));
-                        QUEUE.push(DownloadJob::new(file_info.into(), path));
-                    } else {
-                        return Err(anyhow!("Invalid Mediafire file URL"));
-                    }
-                }
-                FileType::Invalid => return Err(anyhow!("Invalid Mediafire URL")),
             }
+        } else {
+            println!(
+                "{}",
+                format!("Warning: Invalid Mediafire URL: {}", url).yellow()
+            );
         }
     }
 
     if QUEUE.is_empty() {
-        return Err(anyhow!("No files to download"));
+        println!("{}", "Warning: No files to download".yellow());
+        return Ok(());
     }
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
@@ -162,10 +184,14 @@ async fn main() -> Result<()> {
         println!("Failed downloads:");
         failed.iter().for_each(|(job, error)| {
             println!(
-                "{} · {} · {}",
-                job.path.file_name().unwrap().to_str().unwrap(),
-                error,
-                job.file.links.normal_download
+                "{}",
+                format!(
+                    "{} · {} · {}",
+                    job.path.file_name().unwrap().to_str().unwrap(),
+                    error,
+                    job.file.links.normal_download
+                )
+                .red()
             )
         });
     }
