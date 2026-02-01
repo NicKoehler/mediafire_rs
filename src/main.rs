@@ -7,6 +7,7 @@ mod utils;
 use crate::api::file;
 use crate::api::folder;
 use crate::download::{download_file, download_folder};
+use crate::global::REVERSE_ORDER;
 use crate::types::file_type::FileType;
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::Result;
@@ -18,6 +19,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::time::sleep;
 use types::client::Client;
@@ -52,6 +54,10 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(u32).range(1..=10)),
         )
         .arg(
+            arg!(-r --reverse "Download files in reverse order (largest first)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
             arg!(-p --proxy <FILE> "Specify a file to read proxies from")
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
@@ -75,6 +81,8 @@ async fn main() -> Result<()> {
             .collect()
     });
     let proxy_downloads = *matches.get_one::<bool>("proxy-download").unwrap();
+    let reverse_order = *matches.get_one::<bool>("reverse").unwrap_or(&false);
+    REVERSE_ORDER.store(reverse_order, Ordering::Relaxed);
 
     let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
     for url in urls.iter() {

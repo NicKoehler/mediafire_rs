@@ -1,4 +1,5 @@
 use std::collections::BinaryHeap;
+use std::sync::atomic::AtomicBool;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
@@ -41,4 +42,6 @@ lazy_static! {
     pub static ref SUCCESSFUL_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
 
     pub static ref FAILED_DOWNLOADS: Mutex<Vec<(DownloadJob, anyhow::Error)>> = Mutex::new(Vec::new());
+
+    pub static ref REVERSE_ORDER: AtomicBool = AtomicBool::new(false);
 }

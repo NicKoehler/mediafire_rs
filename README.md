@@ -32,6 +32,7 @@ Options:
   -o, --output <OUTPUT>  Output directory [default: .]
   -m, --max <MAX>        Maximum number of concurrent downloads [default: 10]
   -t, --tries <MAX>      Maximum number of tries to repeat for every download [default: 1]
+  -r, --reverse          Download files in reverse order (largest first)
   -p, --proxy <FILE>     Specify a file to read proxies from
       --proxy-download   Downloads files through proxies, the default is to use proxies for the API only
   -h, --help             Print help
