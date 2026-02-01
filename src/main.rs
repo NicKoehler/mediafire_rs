@@ -7,16 +7,19 @@ mod utils;
 use crate::api::file;
 use crate::api::folder;
 use crate::download::{download_file, download_folder};
+use crate::global::REVERSE_ORDER;
+use crate::types::file_type::FileType;
 use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
 use anyhow::Result;
-use anyhow::anyhow;
 use clap::ArgAction;
 use clap::{arg, command, value_parser};
+use colored::*;
 use global::*;
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::time::sleep;
 use types::client::Client;
@@ -28,9 +31,9 @@ async fn main() -> Result<()> {
         .author("NicKoehler")
         .color(clap::ColorChoice::Always)
         .arg(
-            arg!([URL] "Folder or file to download")
+            arg!([URLS] "List of folders or files to download")
                 .required(true)
-                .value_parser(value_parser!(String)),
+                .value_parser(value_parser!(String)).num_args(1..),
         )
         .arg(
             arg!(-o --output <OUTPUT> "Output directory")
@@ -51,7 +54,11 @@ async fn main() -> Result<()> {
                 .value_parser(value_parser!(u32).range(1..=10)),
         )
         .arg(
-            arg!(-p --proxy <FILE> "Speficy a file to read proxies from")
+            arg!(-r --reverse "Download files in reverse order (largest first)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            arg!(-p --proxy <FILE> "Specify a file to read proxies from")
                 .required(false)
                 .value_parser(value_parser!(PathBuf)),
         )
@@ -62,7 +69,7 @@ async fn main() -> Result<()> {
         .get_matches();
     let matches = get_matches;
 
-    let url = matches.get_one::<String>("URL").unwrap();
+    let urls: Vec<String> = matches.get_many("URLS").unwrap().cloned().collect();
     let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
     let max = *matches.get_one::<u32>("max").unwrap();
     let tries = *matches.get_one::<u32>("tries").unwrap();
@@ -74,71 +81,109 @@ async fn main() -> Result<()> {
             .collect()
     });
     let proxy_downloads = *matches.get_one::<bool>("proxy-download").unwrap();
+    let reverse_order = *matches.get_one::<bool>("reverse").unwrap_or(&false);
+    REVERSE_ORDER.store(reverse_order, Ordering::Relaxed);
 
     let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
-    let option = match_mediafire_valid_url(url);
+    for url in urls.iter() {
+        let option = match_mediafire_valid_url(url);
 
-    TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
+        if let Some(keys) = option {
+            TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
+            TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
 
-    if option.is_none() {
-        return Err(anyhow!("Invalid Mediafire URL"));
+            for key in keys.iter() {
+                match FileType::from_key(key) {
+                    FileType::Folder => {
+                        if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
+                            download_folder(
+                                &client,
+                                &key,
+                                path.join(PathBuf::from(folder.name)),
+                                1,
+                            )
+                            .await?;
+                        } else {
+                            println!(
+                                "{}",
+                                format!("Warning: Invalid Mediafire folder URL for {}", url)
+                                    .yellow()
+                            );
+                            continue;
+                        }
+                    }
+                    FileType::File => {
+                        create_directory_if_not_exists(&path).await?;
+                        let response = file::get_info(&key).await?;
+                        if let Some(file_info) = response.file_info {
+                            let path = path.join(PathBuf::from(&file_info.filename));
+                            QUEUE
+                                .lock()
+                                .await
+                                .push(DownloadJob::new(file_info.into(), path));
+                        } else {
+                            println!(
+                                "{}",
+                                format!("Warning: Invalid Mediafire file URL for {}", url).yellow()
+                            );
+                            continue;
+                        }
+                    }
+                    FileType::Invalid => {
+                        println!(
+                            "{}",
+                            format!("Warning: Invalid Mediafire URL: {}", url).yellow()
+                        );
+                        continue;
+                    }
+                }
+            }
+        } else {
+            println!(
+                "{}",
+                format!("Warning: Invalid Mediafire URL: {}", url).yellow()
+            );
+        }
     }
 
-    let (mode, key) = option.unwrap();
-
-    match mode.as_str() {
-        "folder" => {
-            if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
-                download_folder(&client, &key, path.join(PathBuf::from(folder.name)), 1).await?;
-            } else {
-                return Err(anyhow!("Invalid Mediafire folder URL"));
-            }
-        }
-        "file" | "file_premium" | "download" => {
-            create_directory_if_not_exists(&path).await?;
-            let response = file::get_info(&key).await?;
-            if let Some(file_info) = response.file_info {
-                let path = path.join(PathBuf::from(&file_info.filename));
-                QUEUE.push(DownloadJob::new(file_info.into(), path));
-            } else {
-                return Err(anyhow!("Invalid Mediafire file URL"));
-            }
-        }
-        _ => return Err(anyhow!("Invalid Mediafire URL")),
-    }
-
-    if QUEUE.len() == 0 {
-        return Err(anyhow!("No files to download"));
+    if QUEUE.lock().await.is_empty() {
+        println!("{}", "Warning: No files to download".yellow());
+        return Ok(());
     }
 
     TOTAL_PROGRESS_BAR.disable_steady_tick();
-    TOTAL_PROGRESS_BAR.set_length(QUEUE.len() as u64);
+    TOTAL_PROGRESS_BAR.set_length(QUEUE.lock().await.len() as u64);
     TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_DOWNLOAD.clone());
-
     TOTAL_PROGRESS_BAR.set_message("Downloading");
 
     for _ in 0..max {
         let client = client.clone();
         tokio::spawn(async move {
             loop {
-                let task = QUEUE.pop().await;
-                match download_file(&client, &task, tries).await {
-                    Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
-                    Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
+                let task = {
+                    let mut queue = QUEUE.lock().await;
+                    queue.pop()
                 };
+                if let Some(task) = task {
+                    match download_file(&client, &task, tries).await {
+                        Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
+                        Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
+                    };
 
-                TOTAL_PROGRESS_BAR.set_prefix(format!(
-                    "Failed downloads {}",
-                    FAILED_DOWNLOADS.lock().await.len()
-                ));
+                    TOTAL_PROGRESS_BAR.set_prefix(format!(
+                        "Failed downloads {}",
+                        FAILED_DOWNLOADS.lock().await.len()
+                    ));
 
-                TOTAL_PROGRESS_BAR.set_message(format!(
-                    "Successful downloads {}",
-                    SUCCESSFUL_DOWNLOADS.lock().await.len()
-                ));
+                    TOTAL_PROGRESS_BAR.set_message(format!(
+                        "Successful downloads {}",
+                        SUCCESSFUL_DOWNLOADS.lock().await.len()
+                    ));
 
-                TOTAL_PROGRESS_BAR.inc(1);
+                    TOTAL_PROGRESS_BAR.inc(1);
+                } else {
+                    break;
+                }
             }
         });
     }
@@ -152,14 +197,18 @@ async fn main() -> Result<()> {
     TOTAL_PROGRESS_BAR.finish();
 
     let failed = FAILED_DOWNLOADS.lock().await;
-    if failed.len() > 0 {
+    if !failed.is_empty() {
         println!("Failed downloads:");
         failed.iter().for_each(|(job, error)| {
             println!(
-                "{} · {} · {}",
-                job.path.file_name().unwrap().to_str().unwrap(),
-                error,
-                job.file.links.normal_download
+                "{}",
+                format!(
+                    "{} · {} · {}",
+                    job.path.file_name().unwrap().to_str().unwrap(),
+                    error,
+                    job.file.links.normal_download
+                )
+                .red()
             )
         });
     }

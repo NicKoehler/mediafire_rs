@@ -1,13 +1,22 @@
 use crate::types::permissions::Permissions;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+fn u64_from_str<'a, T>(deserializer: T) -> Result<u64, T::Error>
+where
+    T: Deserializer<'a>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<u64>().map_err(de::Error::custom)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct File {
     pub quickkey: String,
     pub hash: String,
     pub filename: String,
     pub description: String,
-    pub size: String,
+    #[serde(deserialize_with = "u64_from_str")]
+    pub size: u64,
     pub privacy: String,
     pub created: String,
     pub password_protected: String,
@@ -24,7 +33,7 @@ pub struct File {
     pub created_utc: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct Links {
     pub normal_download: String,
 }
@@ -36,7 +45,8 @@ pub struct FileInfo {
     pub ready: String,
     pub created: String,
     pub description: String,
-    pub size: String,
+    #[serde(deserialize_with = "u64_from_str")]
+    pub size: u64,
     pub privacy: String,
     pub password_protected: String,
     pub hash: String,

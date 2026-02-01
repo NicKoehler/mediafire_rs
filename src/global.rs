@@ -1,4 +1,6 @@
-use deadqueue::unlimited::Queue;
+use std::collections::BinaryHeap;
+use std::sync::atomic::AtomicBool;
+
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
@@ -31,7 +33,7 @@ lazy_static! {
         .template("[{bar:30.green}] · {msg} · {percent}% ({bytes:.magenta}/{total_bytes:.magenta}) · {prefix:.blue}")
         .unwrap();
 
-    pub static ref QUEUE: Queue<DownloadJob> = Queue::new();
+    pub static ref QUEUE: Mutex<BinaryHeap<DownloadJob>> = Mutex::new(BinaryHeap::new());
 
     pub static ref MULTI_PROGRESS_BAR: indicatif::MultiProgress = indicatif::MultiProgress::new();
 
@@ -40,4 +42,6 @@ lazy_static! {
     pub static ref SUCCESSFUL_DOWNLOADS: Mutex<Vec<DownloadJob>> = Mutex::new(Vec::new());
 
     pub static ref FAILED_DOWNLOADS: Mutex<Vec<(DownloadJob, anyhow::Error)>> = Mutex::new(Vec::new());
+
+    pub static ref REVERSE_ORDER: AtomicBool = AtomicBool::new(false);
 }

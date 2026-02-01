@@ -27,17 +27,9 @@ pub async fn download_folder(
     folder_key: &str,
     path: PathBuf,
     chunk: u32,
-) -> Result<()> {
+) -> Result<(), anyhow::Error> {
     create_directory_if_not_exists(&path).await?;
-    TOTAL_PROGRESS_BAR.set_message(format!(
-        "{}",
-        path.components()
-            .last()
-            .unwrap()
-            .as_os_str()
-            .to_str()
-            .unwrap()
-    ));
+    TOTAL_PROGRESS_BAR.set_message(format!("{}", file_name(&path)));
 
     let (folder_content, file_content) =
         get_folder_and_file_content(client, folder_key, chunk).await?;
@@ -74,11 +66,11 @@ async fn get_folder_and_file_content(
 }
 
 async fn download_files(files: Vec<File>, path: &PathBuf) -> Result<()> {
-    files.iter().for_each(|file| {
+    for file in files {
         let file_path = path.join(&file.filename);
         let download_job = DownloadJob::new(file.clone(), file_path);
-        QUEUE.push(download_job);
-    });
+        QUEUE.lock().await.push(download_job);
+    }
     Ok(())
 }
 
@@ -103,7 +95,7 @@ pub async fn download_file(
     mut tries: u32,
 ) -> Result<()> {
     let bar = MULTI_PROGRESS_BAR.insert_from_back(1, ProgressBar::new(0));
-    let filename = file_name(download_job);
+    let filename = file_name(&download_job.path);
 
     let mut last_error: anyhow::Error = anyhow!("Something went wrong");
 
@@ -144,7 +136,7 @@ async fn attempt_download(
 ) -> Result<()> {
     use reqwest::StatusCode;
 
-    let filename = file_name(download_job);
+    let filename = file_name(&download_job.path);
     let resume_info = prepare_resume(download_job, bar).await?;
     if resume_info.is_none() {
         return Ok(());
@@ -232,10 +224,8 @@ pub async fn stream_file_to_disk(
     Ok(())
 }
 
-fn file_name(download_job: &DownloadJob) -> String {
-    download_job
-        .path
-        .file_name()
+fn file_name(path: &PathBuf) -> String {
+    path.file_name()
         .and_then(|f| f.to_str())
         .unwrap_or("unknown")
         .to_string()

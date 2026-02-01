@@ -6,12 +6,12 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-pub fn match_mediafire_valid_url(url: &str) -> Option<(String, String)> {
-    let re = Regex::new(r"mediafire\.com/(file|file_premium|folder|download)/(\w+)").unwrap();
+pub fn match_mediafire_valid_url(url: &str) -> Option<Vec<String>> {
+    let re = Regex::new(r"mediafire\.com/(file|file_premium|folder|download)/([\w,]+)").unwrap();
     let matches = re.captures(url);
 
     if let Some(captures) = matches {
-        Some((captures[1].to_string(), captures[2].to_string()))
+        Some(captures[2].split(',').map(|t| t.to_string()).collect())
     } else {
         None
     }

@@ -23,18 +23,23 @@ cargo install mediafire_rs
 ## Usage
 
 ```bash
-Usage: mdrs.exe [OPTIONS] <URL>
+Usage: mdrs [OPTIONS] <URLS>...
 
 Arguments:
-  <URL>  Folder or file to download
+  <URLS>...  List of folders or files to download
 
 Options:
   -o, --output <OUTPUT>  Output directory [default: .]
   -m, --max <MAX>        Maximum number of concurrent downloads [default: 10]
-  -p, --proxy <FILE>     Speficy a file to read proxies from
+  -t, --tries <MAX>      Maximum number of tries to repeat for every download [default: 1]
+  -r, --reverse          Download files in reverse order (largest first)
+  -p, --proxy <FILE>     Specify a file to read proxies from
       --proxy-download   Downloads files through proxies, the default is to use proxies for the API only
   -h, --help             Print help
   -V, --version          Print version
 ```
-
+## Building
 For building from source, please refer to the [BUILDING.md](BUILDING.md) file for detailed instructions.
+
+## Contributing
+For contributions, please refer to the [CONTRIBUTING](CONTRIBUTING.md) file for detailed instructions.
