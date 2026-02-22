@@ -1,217 +1,215 @@
-mod api;
-mod download;
-mod global;
-mod types;
-mod utils;
+use crate::config::Config;
+use crate::download::download_file;
+use crate::styles::ProgressStyles;
 
-use crate::api::file;
-use crate::api::folder;
-use crate::download::{download_file, download_folder};
-use crate::global::REVERSE_ORDER;
-use crate::types::file_type::FileType;
-use crate::utils::{create_directory_if_not_exists, match_mediafire_valid_url};
-use anyhow::Result;
-use clap::ArgAction;
-use clap::{arg, command, value_parser};
+use clap::{ArgAction, arg, command, value_parser};
 use colored::*;
-use global::*;
-use std::fs::File;
-use std::io;
-use std::io::BufRead;
-use std::path::PathBuf;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
-use tokio::time::sleep;
-use types::client::Client;
-use types::download::DownloadJob;
+use futures::future::join_all;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use md_downloader::MediafireDownloader;
+use md_downloader::types::{DownloadError, DownloadJob};
+use std::collections::BinaryHeap;
+use std::{
+    fs::File,
+    io::{self, BufRead},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::sync::Mutex;
+
+mod config;
+mod download;
+mod styles;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let get_matches = command!()
+async fn main() -> Result<(), DownloadError> {
+    let config = parse_args();
+    let proxies = load_proxies(config.proxy_file.clone());
+
+    let downloader = MediafireDownloader::new(config.tries)?
+        .reverse_downloads(config.reverse_order)
+        .set_proxies(proxies, config.proxy_downloads)?;
+
+    let styles = Arc::new(ProgressStyles::new());
+    let (multi, total_bar) = build_total_progress_bar();
+
+    let jobs = downloader
+        .get_download_jobs_with_progress(&config.urls, config.output_path, |filename| {
+            total_bar.set_message(filename.to_string())
+        })
+        .await?;
+
+    if jobs.is_empty() {
+        println!("{}", "Warning: No files to download".yellow());
+        return Ok(());
+    }
+
+    prepare_total_bar_for_download(&total_bar, jobs.len());
+
+    let jobs = Arc::new(Mutex::new(jobs));
+    let successful = Arc::new(Mutex::new(Vec::<DownloadJob>::new()));
+    let failed = Arc::new(Mutex::new(Vec::<(DownloadJob, DownloadError)>::new()));
+
+    let handles = spawn_workers(
+        config.max,
+        config.tries,
+        jobs,
+        multi.clone(),
+        total_bar.clone(),
+        styles,
+        successful.clone(),
+        failed.clone(),
+    );
+
+    join_all(handles).await;
+
+    total_bar.finish();
+
+    print_failures(failed).await;
+
+    Ok(())
+}
+
+fn parse_args() -> Config {
+    let matches = command!()
         .author("NicKoehler")
         .color(clap::ColorChoice::Always)
         .arg(
             arg!([URLS] "List of folders or files to download")
                 .required(true)
-                .value_parser(value_parser!(String)).num_args(1..),
+                .value_parser(value_parser!(String))
+                .num_args(1..),
         )
         .arg(
             arg!(-o --output <OUTPUT> "Output directory")
-                .required(false)
                 .default_value(".")
                 .value_parser(value_parser!(PathBuf)),
         )
         .arg(
-            arg!(-m --max <MAX> "Maximum number of concurrent downloads")
-                .required(false)
+            arg!(-m --max <MAX> "Maximum concurrent downloads")
                 .default_value("10")
-                .value_parser(value_parser!(u32).range(1..=100)),
+                .value_parser(value_parser!(u64).range(1..=100)),
         )
         .arg(
-            arg!(-t --tries <MAX> "Maximum number of tries to repeat for every download")
-                .required(false)
+            arg!(-t --tries <TRIES> "Maximum retries per download")
                 .default_value("1")
-                .value_parser(value_parser!(u32).range(1..=10)),
+                .value_parser(value_parser!(u64).range(1..=10)),
         )
+        .arg(arg!(-r --reverse "Download largest files first").action(ArgAction::SetTrue))
         .arg(
-            arg!(-r --reverse "Download files in reverse order (largest first)")
-                .action(ArgAction::SetTrue),
-        )
-        .arg(
-            arg!(-p --proxy <FILE> "Specify a file to read proxies from")
-                .required(false)
+            arg!(-p --proxy <FILE> "File containing proxy list")
                 .value_parser(value_parser!(PathBuf)),
         )
-        .arg(
-            arg!(--"proxy-download" "Downloads files through proxies, the default is to use proxies for the API only")
-                .action(ArgAction::SetTrue)
-        )
+        .arg(arg!(--"proxy-download" "Use proxies for file downloads").action(ArgAction::SetTrue))
         .get_matches();
-    let matches = get_matches;
 
-    let urls: Vec<String> = matches.get_many("URLS").unwrap().cloned().collect();
-    let path = matches.get_one::<PathBuf>("output").unwrap().to_path_buf();
-    let max = *matches.get_one::<u32>("max").unwrap();
-    let tries = *matches.get_one::<u32>("tries").unwrap();
-    let proxies: Option<Vec<String>> = matches.get_one::<PathBuf>("proxy").map(|path| {
-        let proxy_file = File::open(path).unwrap();
-        io::BufReader::new(proxy_file)
-            .lines()
-            .map_while(Result::ok)
-            .collect()
-    });
-    let proxy_downloads = *matches.get_one::<bool>("proxy-download").unwrap();
-    let reverse_order = *matches.get_one::<bool>("reverse").unwrap_or(&false);
-    REVERSE_ORDER.store(reverse_order, Ordering::Relaxed);
+    Config::new(
+        matches.get_many("URLS").unwrap().cloned().collect(),
+        matches.get_one::<PathBuf>("output").unwrap().clone(),
+        *matches.get_one::<u64>("max").unwrap(),
+        *matches.get_one::<u64>("tries").unwrap(),
+        *matches.get_one::<bool>("reverse").unwrap(),
+        matches.get_one::<PathBuf>("proxy").cloned(),
+        *matches.get_one::<bool>("proxy-download").unwrap(),
+    )
+}
 
-    let client = std::sync::Arc::new(Client::new(proxies, proxy_downloads));
-    for url in urls.iter() {
-        let option = match_mediafire_valid_url(url);
+fn load_proxies(path: Option<PathBuf>) -> Option<Vec<String>> {
+    path.map(|p| {
+        File::open(p)
+            .map(io::BufReader::new)
+            .map(|reader| reader.lines().map_while(Result::ok).collect::<Vec<_>>())
+            .unwrap_or_default()
+    })
+}
 
-        if let Some(keys) = option {
-            TOTAL_PROGRESS_BAR.enable_steady_tick(Duration::from_millis(120));
-            TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_START.clone());
+fn build_total_progress_bar() -> (Arc<MultiProgress>, Arc<ProgressBar>) {
+    let multi = Arc::new(MultiProgress::new());
+    let total_bar = Arc::new(multi.add(ProgressBar::new(0)));
 
-            for key in keys.iter() {
-                match FileType::from_key(key) {
-                    FileType::Folder => {
-                        if let Some(folder) = folder::get_info(&client, &key).await?.folder_info {
-                            download_folder(
-                                &client,
-                                &key,
-                                path.join(PathBuf::from(folder.name)),
-                                1,
-                            )
-                            .await?;
-                        } else {
-                            println!(
-                                "{}",
-                                format!("Warning: Invalid Mediafire folder URL for {}", url)
-                                    .yellow()
-                            );
-                            continue;
-                        }
-                    }
-                    FileType::File => {
-                        create_directory_if_not_exists(&path).await?;
-                        let response = file::get_info(&key).await?;
-                        if let Some(file_info) = response.file_info {
-                            let path = path.join(PathBuf::from(&file_info.filename));
-                            QUEUE
-                                .lock()
-                                .await
-                                .push(DownloadJob::new(file_info.into(), path));
-                        } else {
-                            println!(
-                                "{}",
-                                format!("Warning: Invalid Mediafire file URL for {}", url).yellow()
-                            );
-                            continue;
-                        }
-                    }
-                    FileType::Invalid => {
-                        println!(
-                            "{}",
-                            format!("Warning: Invalid Mediafire URL: {}", url).yellow()
-                        );
-                        continue;
-                    }
-                }
-            }
-        } else {
-            println!(
-                "{}",
-                format!("Warning: Invalid Mediafire URL: {}", url).yellow()
-            );
-        }
-    }
+    total_bar.enable_steady_tick(Duration::from_millis(120));
+    total_bar.set_style(
+        ProgressStyle::default_bar()
+            .progress_chars("-> ")
+            .template("{spinner} Fetching data · {msg:.blue}")
+            .unwrap(),
+    );
 
-    if QUEUE.lock().await.is_empty() {
-        println!("{}", "Warning: No files to download".yellow());
-        return Ok(());
-    }
+    (multi, total_bar)
+}
 
-    TOTAL_PROGRESS_BAR.disable_steady_tick();
-    TOTAL_PROGRESS_BAR.set_length(QUEUE.lock().await.len() as u64);
-    TOTAL_PROGRESS_BAR.set_style(PROGRESS_STYLE_TOTAL_DOWNLOAD.clone());
-    TOTAL_PROGRESS_BAR.set_message("Downloading");
+fn prepare_total_bar_for_download(bar: &ProgressBar, job_count: usize) {
+    bar.disable_steady_tick();
+    bar.set_length(job_count as u64);
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .progress_chars("-> ")
+            .template("[{bar:30.blue}] {pos}/{len} ({percent}%) · {msg:.green} · {prefix:.red}")
+            .unwrap(),
+    );
+    bar.set_message("Downloading");
+}
 
-    for _ in 0..max {
-        let client = client.clone();
-        tokio::spawn(async move {
-            loop {
-                let task = {
-                    let mut queue = QUEUE.lock().await;
-                    queue.pop()
-                };
-                if let Some(task) = task {
-                    match download_file(&client, &task, tries).await {
-                        Ok(_) => SUCCESSFUL_DOWNLOADS.lock().await.push(task),
-                        Err(e) => FAILED_DOWNLOADS.lock().await.push((task, e)),
+fn spawn_workers(
+    max: u64,
+    tries: u64,
+    jobs: Arc<Mutex<BinaryHeap<DownloadJob>>>,
+    multi: Arc<MultiProgress>,
+    total_bar: Arc<ProgressBar>,
+    styles: Arc<ProgressStyles>,
+    successful: Arc<Mutex<Vec<DownloadJob>>>,
+    failed: Arc<Mutex<Vec<(DownloadJob, DownloadError)>>>,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    (0..max)
+        .map(|_| {
+            let jobs = jobs.clone();
+            let multi = multi.clone();
+            let total_bar = total_bar.clone();
+            let styles = styles.clone();
+            let successful = successful.clone();
+            let failed = failed.clone();
+
+            tokio::spawn(async move {
+                loop {
+                    let job = {
+                        let mut queue = jobs.lock().await;
+                        queue.pop()
                     };
 
-                    TOTAL_PROGRESS_BAR.set_prefix(format!(
-                        "Failed downloads {}",
-                        FAILED_DOWNLOADS.lock().await.len()
-                    ));
+                    let Some(job) = job else { break };
 
-                    TOTAL_PROGRESS_BAR.set_message(format!(
-                        "Successful downloads {}",
-                        SUCCESSFUL_DOWNLOADS.lock().await.len()
-                    ));
+                    let result = download_file(&job, tries, multi.clone(), styles.clone()).await;
 
-                    TOTAL_PROGRESS_BAR.inc(1);
-                } else {
-                    break;
+                    match result {
+                        Ok(_) => successful.lock().await.push(job),
+                        Err(e) => failed.lock().await.push((job, e)),
+                    }
+
+                    let failed_count = failed.lock().await.len();
+                    let success_count = successful.lock().await.len();
+
+                    total_bar.set_prefix(format!("Failed {}", failed_count));
+                    total_bar.set_message(format!("Successful {}", success_count));
+                    total_bar.inc(1);
                 }
-            }
-        });
+            })
+        })
+        .collect()
+}
+
+async fn print_failures(failed: Arc<Mutex<Vec<(DownloadJob, DownloadError)>>>) {
+    let failed = failed.lock().await;
+
+    if failed.is_empty() {
+        return;
     }
 
-    if let Some(total_bar_length) = TOTAL_PROGRESS_BAR.length() {
-        while TOTAL_PROGRESS_BAR.position() < total_bar_length {
-            sleep(Duration::from_millis(100)).await;
-        }
+    println!("\nFailed downloads:");
+    for (job, error) in failed.iter() {
+        println!(
+            "{}",
+            format!("{} · {} · {}", job.filename, error, job.download_link).red()
+        );
     }
-
-    TOTAL_PROGRESS_BAR.finish();
-
-    let failed = FAILED_DOWNLOADS.lock().await;
-    if !failed.is_empty() {
-        println!("Failed downloads:");
-        failed.iter().for_each(|(job, error)| {
-            println!(
-                "{}",
-                format!(
-                    "{} · {} · {}",
-                    job.path.file_name().unwrap().to_str().unwrap(),
-                    error,
-                    job.file.links.normal_download
-                )
-                .red()
-            )
-        });
-    }
-
-    Ok(())
 }
