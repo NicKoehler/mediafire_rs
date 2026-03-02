@@ -666,12 +666,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazy_static"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
 name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -712,9 +706,9 @@ checksum = "ae960838283323069879657ca3de837e9f7bbb4c7bf6ea7f1b290d5e9476d2e0"
 
 [[package]]
 name = "md_api"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08635a86b0632ddb3834facfd77fd9f40fd0d18eef127eade49d037e58509d6c"
+checksum = "5ba138cafb166072fc8537e97b35591ca7485ed604e754b3fcdd84cb38398473"
 dependencies = [
  "futures",
  "regex",
@@ -726,9 +720,9 @@ dependencies = [
 
 [[package]]
 name = "md_downloader"
-version = "0.1.0"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1fbe06a5b6cd7200b2d84df48ec075f28b4d07fb877278ac9a3df79d92983e1"
+checksum = "13451db6404ae921716cfe196713c31268bb1610c7224821285c2142a99c7227"
 dependencies = [
  "futures",
  "hex",
@@ -747,7 +741,6 @@ dependencies = [
  "colored",
  "futures",
  "indicatif",
- "lazy_static",
  "md_downloader",
  "tokio",
 ]
