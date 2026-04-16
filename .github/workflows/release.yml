@@ -24,6 +24,8 @@ jobs:
             target: windows-x64
           - os: macos-latest
             target: darwin-x64
+          - os: macos-latest
+            target: darwin-aarch64
 
     steps:
       - name: Checkout code
@@ -43,7 +45,7 @@ jobs:
           cp target/release/${{ env.BINARY_NAME }}.exe target/release/binaries/${{ matrix.target }}/
 
       - name: Build and copy linux/macos binaries
-        if: ${{ matrix.target == 'linux-x64' || matrix.target == 'darwin-x64'}}
+        if: ${{ matrix.target == 'linux-x64' || matrix.target == 'darwin-x64' || matrix.target == 'darwin-aarch64' }}
         run: |
           cp target/release/${{ env.BINARY_NAME }} target/release/binaries/${{ matrix.target }}/
 
