@@ -29,6 +29,7 @@ Arguments:
   <URLS>...  List of folders or files to download
 
 Options:
+  -i, --input <FILE>     File containing URLs
   -o, --output <OUTPUT>  Output directory [default: .]
   -m, --max <MAX>        Maximum number of concurrent downloads [default: 10]
   -t, --tries <MAX>      Maximum number of tries to repeat for every download [default: 1]
