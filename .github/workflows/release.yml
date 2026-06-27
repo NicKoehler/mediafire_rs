@@ -41,11 +41,13 @@ jobs:
 
       - name: Build and copy windows binaries
         if: ${{ matrix.target == 'windows-x64' }}
+        shell: bash
         run: |
           cp target/release/${{ env.BINARY_NAME }}.exe target/release/binaries/${{ matrix.target }}/
 
       - name: Build and copy linux/macos binaries
         if: ${{ matrix.target == 'linux-x64' || matrix.target == 'darwin-x64' || matrix.target == 'darwin-aarch64' }}
+        shell: bash
         run: |
           cp target/release/${{ env.BINARY_NAME }} target/release/binaries/${{ matrix.target }}/
 
@@ -58,6 +60,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -70,10 +73,9 @@ jobs:
           exclude_types: other,doc,chore
 
       - name: Download binaries
-        uses: dawidd6/action-download-artifact@v13
+        uses: actions/download-artifact@v4
         with:
           path: builds/
-          skip_unpack: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -81,4 +83,4 @@ jobs:
           body: ${{ steps.changelog.outputs.changes }}
           make_latest: true
           files: |
-            builds/*
+            builds/**/*
