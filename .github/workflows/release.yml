@@ -1,54 +1,84 @@
-name: Release
-
-permissions:
-  contents: write
+name: Build and Release
 
 on:
   push:
     tags:
-      - v[0-9]+.*
+      - "v*"
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  BINARY_NAME: mdrs
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/create-gh-release-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  upload-assets:
-    needs: create-release
+  build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-    runs-on: ${{ matrix.os }}
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-latest
+            target: darwin-x64
+          - os: macos-latest
+            target: darwin-aarch64
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/upload-rust-binary-action@v1
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: |
+          cargo build --release
+          mkdir -p target/release/binaries/${{ matrix.target }}
+
+      - name: Build and copy windows binaries
+        if: ${{ matrix.target == 'windows-x64' }}
+        run: |
+          cp target/release/${{ env.BINARY_NAME }}.exe target/release/binaries/${{ matrix.target }}/
+
+      - name: Build and copy linux/macos binaries
+        if: ${{ matrix.target == 'linux-x64' || matrix.target == 'darwin-x64' || matrix.target == 'darwin-aarch64' }}
+        run: |
+          cp target/release/${{ env.BINARY_NAME }} target/release/binaries/${{ matrix.target }}/
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
         with:
-          # (required) Comma-separated list of binary names (non-extension portion of filename) to build and upload.
-          # Note that glob pattern is not supported yet.
-          bin: mdrs
-          # (optional) Target triple, default is host triple.
-          # This is optional but it is recommended that this always be set to
-          # clarify which target you are building for if macOS is included in
-          # the matrix because GitHub Actions changed the default architecture
-          # of macos-latest since macos-14.
-          target: ${{ matrix.target }}
-          # (optional) On which platform to distribute the `.tar.gz` file.
-          # [default value: unix]
-          # [possible values: all, unix, windows, none]
-          tar: unix
-          # (optional) On which platform to distribute the `.zip` file.
-          # [default value: windows]
-          # [possible values: all, unix, windows, none]
-          zip: windows
-          # (required) GitHub token for uploading assets to GitHub Releases.
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          path: target/release/binaries/${{ matrix.target }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate changelog
+        id: changelog
+        uses: loopwerk/tag-changelog@v1
+        with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          exclude_types: other,doc,chore
+
+      - name: Download binaries
+        uses: dawidd6/action-download-artifact@v13
+        with:
+          path: builds/
+          skip_unpack: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.changes }}
+          make_latest: true
+          files: |
+            builds/*
