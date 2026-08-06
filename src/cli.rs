@@ -39,6 +39,7 @@ pub fn parse_args() -> Config {
                 .value_parser(value_parser!(PathBuf)),
         )
         .arg(arg!(--"proxy-download" "Use proxies for file downloads").action(ArgAction::SetTrue))
+        .arg(arg!(--"skip-hash" "Skip hash verification after download").action(ArgAction::SetTrue))
         .get_matches();
 
     Config::new(
@@ -55,5 +56,6 @@ pub fn parse_args() -> Config {
         *matches.get_one::<bool>("reverse").unwrap(),
         matches.get_one::<PathBuf>("proxy").cloned(),
         *matches.get_one::<bool>("proxy-download").unwrap(),
+        *matches.get_one::<bool>("skip-hash").unwrap(),
     )
 }

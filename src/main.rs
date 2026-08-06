@@ -51,6 +51,12 @@ async fn main() -> Result<(), DownloadError> {
         })
         .await?;
 
+    let jobs = if config.skip_hash {
+        jobs.into_iter().map(|j| j.with_skip_hash(true)).collect()
+    } else {
+        jobs
+    };
+
     if jobs.is_empty() {
         println!("{}", "Warning: No files to download".yellow());
         return Ok(());

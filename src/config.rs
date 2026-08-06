@@ -10,6 +10,7 @@ pub struct Config {
     pub reverse_order: bool,
     pub proxy_file: Option<PathBuf>,
     pub proxy_downloads: bool,
+    pub skip_hash: bool,
 }
 
 impl Config {
@@ -22,6 +23,7 @@ impl Config {
         reverse_order: bool,
         proxy_file: Option<PathBuf>,
         proxy_downloads: bool,
+        skip_hash: bool,
     ) -> Self {
         Self {
             urls,
@@ -32,6 +34,7 @@ impl Config {
             reverse_order,
             proxy_file,
             proxy_downloads,
+            skip_hash,
         }
     }
 }
