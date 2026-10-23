@@ -40,7 +40,8 @@ async fn main() -> Result<(), DownloadError> {
 
     let downloader = MediafireDownloader::new(config.tries)?
         .reverse_downloads(config.reverse_order)
-        .set_proxies(proxies, config.proxy_downloads)?;
+        .set_proxies(proxies, config.proxy_downloads)?
+        .with_flare_solver(config.flare_solver.clone())?;
 
     let styles = Arc::new(ProgressStyles::new());
     let (multi, total_bar) = build_total_progress_bar();

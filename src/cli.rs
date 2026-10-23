@@ -39,6 +39,10 @@ pub fn parse_args() -> Config {
                 .value_parser(value_parser!(PathBuf)),
         )
         .arg(arg!(--"proxy-download" "Use proxies for file downloads").action(ArgAction::SetTrue))
+        .arg(
+            arg!(--"flare-solver" <URL> "Base URL of a self-hosted FlareSolverr instance (e.g. http://127.0.0.1:8191) used for Cloudflare-challenged downloads")
+                .value_parser(value_parser!(String)),
+        )
         .get_matches();
 
     Config::new(
@@ -55,5 +59,6 @@ pub fn parse_args() -> Config {
         *matches.get_one::<bool>("reverse").unwrap(),
         matches.get_one::<PathBuf>("proxy").cloned(),
         *matches.get_one::<bool>("proxy-download").unwrap(),
+        matches.get_one::<String>("flare-solver").cloned(),
     )
 }
