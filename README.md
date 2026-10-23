@@ -23,22 +23,25 @@ cargo install mediafire_rs
 ## Usage
 
 ```bash
-Usage: mdrs [OPTIONS] <URLS>...
+Usage: mdrs [OPTIONS] <URLS|--input <FILE>>
 
 Arguments:
-  <URLS>...  List of folders or files to download
+  [URLS]...  List of folders or files to download
 
 Options:
-  -i, --input <FILE>     File containing URLs
-  -o, --output <OUTPUT>  Output directory [default: .]
-  -m, --max <MAX>        Maximum number of concurrent downloads [default: 10]
-  -t, --tries <MAX>      Maximum number of tries to repeat for every download [default: 1]
-  -r, --reverse          Download files in reverse order (largest first)
-  -p, --proxy <FILE>     Specify a file to read proxies from
-      --proxy-download   Downloads files through proxies, the default is to use proxies for the API only
-  -h, --help             Print help
-  -V, --version          Print version
+  -i, --input <FILE>        File containing URLs
+  -o, --output <OUTPUT>     Output directory [default: .]
+  -m, --max <MAX>           Maximum concurrent downloads [default: 10]
+  -t, --tries <TRIES>       Maximum retries per download [default: 1]
+  -r, --reverse             Download largest files first
+  -p, --proxy <FILE>        File containing proxy list
+      --proxy-download      Use proxies for file downloads
+      --flare-solver <URL>  Base URL of a self-hosted FlareSolverr instance (e.g. http://127.0.0.1:8191) used for Cloudflare-challenged downloads
+  -h, --help                Print help
+  -V, --version             Print version
 ```
+
+Some MediaFire pages are protected by an interactive Cloudflare challenge that a regular HTTP client cannot get past. If your downloads fail with a `403` on such pages, run a [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance locally (for example `docker run -d -p 8191:8191 ghcr.io/flaresolverr/flaresolverr`) and pass its URL with `--flare-solver`. Only challenged files are sent to FlareSolverr; everything else downloads as usual.
 ## Building
 For building from source, please refer to the [BUILDING.md](BUILDING.md) file for detailed instructions.
 
